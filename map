@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>나의 대동여지도</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    #map {
+      height: 100vh;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    // 지도 초기화
+    const map = L.map('map').setView([37.5665, 126.9780], 13); // 서울 중심 좌표 (위도: 37.5665, 경도: 126.9780)
+
+    // OpenStreetMap의 타일 레이어 설정
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
+
+    let path = [];  // 지나간 경로를 저장할 배열
+    let timestamps = [];  // 각 경로가 추가된 시간을 저장할 배열
+    let polyline;   // 경로를 그릴 polyline
+
+    // 명암을 날짜에 따라 조정하는 함수
+    function getOpacity(dayDifference) {
+      if (dayDifference <= 1) return 1; // 1일째는 100% 명암
+      if (dayDifference <= 10) return 0.8; // 10일째는 80% 명암
+      if (dayDifference <= 100) return 0.6; // 100일째는 60% 명암
+      if (dayDifference <= 1000) return 0.4; // 1000일째는 40% 명암
+      return 0.2; // 그 이상은 20% 명암
+    }
+
+    // 현재 위치 마크 추가
+    function onLocationFound(e) {
+      const radius = e.accuracy / 2; // 정확도를 반영한 반경
+
+      // 현재 위치에 마커 표시
+      L.marker(e.latlng).addTo(map)
+        .bindPopup("현재 위치")
+        .openPopup();
+
+      // 경로에 현재 위치 추가
+      path.push(e.latlng);
+      timestamps.push(new Date());  // 현재 시간을 저장 (timestamp)
+
+      // 경로를 Polyline으로 연결
+      if (path.length > 1) {
+        // 날짜 차이를 계산하여 명암을 설정
+        const dayDifference = Math.floor((new Date() - timestamps[timestamps.length - 2]) / (1000 * 60 * 60 * 24)); // 일 수 차이
+        const opacity = getOpacity(dayDifference); // 명암 계산
+
+        // 지나간 경로를 Polyline으로 그리기
+        polyline = L.polyline(path, { color: 'blue', opacity: opacity, weight: 5 }).addTo(map);
+      }
+
+      // 현재 위치 반경을 원으로 표시
+      L.circle(e.latlng, radius).addTo(map);
+    }
+
+    // 위치 오류 처리
+    function onLocationError(e) {
+      alert(e.message);
+    }
+
+    // 위치 정보 가져오기
+    map.locate({ setView: true, watch: true, maxZoom: 16 });
+
+    map.on('locationfound', onLocationFound);
+    map.on('locationerror', onLocationError);
+  </script>
+</body>
+</html>
