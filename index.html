@@ -32,16 +32,17 @@
     let path = [];
     let currentMarker = null;
 
-    function getColorByDate(timestamp) {
+    // 시간 경과에 따른 색상 및 명암도 계산 함수
+    function getColorByTime(timestamp) {
       const now = new Date();
       const past = new Date(timestamp);
-      const daysPassed = Math.floor((now - past) / (1000 * 60 * 60 * 24));
+      const hoursPassed = Math.floor((now - past) / (1000 * 60 * 60)); // 시간 단위
 
-      if (daysPassed <= 1) return 'rgba(255,255,255,1.0)';
-      if (daysPassed <= 10) return 'rgba(255,255,255,0.8)';
-      if (daysPassed <= 100) return 'rgba(255,255,255,0.6)';
-      if (daysPassed <= 1000) return 'rgba(255,255,255,0.4)';
-      return 'rgba(255,255,255,0.2)';
+      let opacity = 1.0 - (hoursPassed * 0.01);
+      if (opacity < 0.3) {
+        return { color: 'purple', opacity: 0.3 };  // 흔적 표시
+      }
+      return { color: 'white', opacity: opacity };
     }
 
     navigator.geolocation.watchPosition(position => {
@@ -67,19 +68,17 @@
 
       // 과거 경로 그리기
       if (path.length > 1) {
-        const segments = [];
         for (let i = 1; i < path.length; i++) {
-          segments.push({
-            coords: [
-              [path[i - 1].lat, path[i - 1].lng],
-              [path[i].lat, path[i].lng]
-            ],
-            color: getColorByDate(path[i].timestamp)
-          });
+          const segmentStyle = getColorByTime(path[i].timestamp);
+          L.polyline([
+            [path[i - 1].lat, path[i - 1].lng],
+            [path[i].lat, path[i].lng]
+          ], {
+            color: segmentStyle.color,
+            opacity: segmentStyle.opacity,
+            weight: 4
+          }).addTo(map);
         }
-        segments.forEach(seg => {
-          L.polyline(seg.coords, { color: seg.color, weight: 4 }).addTo(map);
-        });
       }
 
     }, error => {
@@ -91,3 +90,4 @@
   </script>
 </body>
 </html>
+
