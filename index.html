@@ -1,93 +1,168 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <title>나의 대동여지도 - Dark</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#000000" />
+  <title>나의 대동여지도</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <style>
-    body, html {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      background: black;
+    #map { height: 100vh; margin: 0; padding: 0; }
+    body { margin: 0; font-family: sans-serif; background: #000; }
+    #buttonContainer {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
     }
-    #map {
-      height: 100%;
+    button {
+      padding: 8px 16px;
+      margin: 4px;
+      background: #444;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #666;
     }
   </style>
 </head>
 <body>
   <div id="map"></div>
+  <div id="buttonContainer">
+    <button onclick="insertDataSet(1)">데이터셋 1</button>
+    <button onclick="insertDataSet(2)">데이터셋 2</button>
+    <button onclick="insertDataSet(3)">데이터셋 3</button>
+    <button onclick="toggleGPS()">GPS ON/OFF</button>
+  </div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
-    const map = L.map('map').setView([37.5665, 126.9780], 13);
-
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
-      subdomains: 'abcd',
-      maxZoom: 19
-    }).addTo(map);
-
+    let map;
     let path = [];
+    let polylines = [];
     let currentMarker = null;
+    let gpsEnabled = false;
+    let watchId = null;
 
-    // 시간 경과에 따른 색상 및 명암도 계산 함수
-    function getColorByTime(timestamp) {
+    function getOpacityAndColorByMinutes(timestamp) {
       const now = new Date();
       const past = new Date(timestamp);
-      const hoursPassed = Math.floor((now - past) / (1000 * 60 * 60)); // 시간 단위
+      const minutesPassed = Math.floor((now - past) / (1000 * 60));
+      const daysPassed = Math.floor((now - past) / (1000 * 60 * 60 * 24));
 
-      let opacity = 1.0 - (hoursPassed * 0.01);
+      let opacity = 1.0 - (minutesPassed * 0.01);
       if (opacity < 0.3) {
-        return { color: 'purple', opacity: 0.3 };  // 흔적 표시
+        opacity = 0.3;
+        if (daysPassed === 0) {
+          return { color: '#aaaaaa', opacity: opacity };
+        } else if (daysPassed === 1) {
+          return { color: '#555555', opacity: opacity };
+        } else {
+          return { color: '#000000', opacity: opacity };
+        }
       }
-      return { color: 'white', opacity: opacity };
+      return { color: '#00ffcc', opacity: opacity };
     }
 
-    navigator.geolocation.watchPosition(position => {
-      const lat = position.coords.latitude;
-      const lng = position.coords.longitude;
-      const timestamp = new Date().toISOString();
+    function drawPath() {
+      polylines.forEach(p => map.removeLayer(p));
+      polylines = [];
 
-      const newPoint = { lat, lng, timestamp };
-      path.push(newPoint);
+      for (let i = 1; i < path.length; i++) {
+        const prev = path[i - 1];
+        const curr = path[i];
+        if (!curr.timestamp) continue;
+        const style = getOpacityAndColorByMinutes(curr.timestamp);
 
-      // 현재 위치 마커 갱신
+        const segment = L.polyline([prev.latlng, curr.latlng], {
+          color: style.color,
+          opacity: style.opacity,
+          weight: 4,
+          lineCap: 'round',
+        }).addTo(map);
+        polylines.push(segment);
+      }
+    }
+
+    function insertDataSet(datasetNumber) {
+      const now = Date.now();
+      if (datasetNumber === 1) {
+        path = [
+          { latlng: [37.5665, 126.9780], timestamp: now - (60 * 60 * 1000) },
+          { latlng: [37.5670, 126.9785], timestamp: now - (30 * 60 * 1000) },
+          { latlng: [37.5680, 126.9790], timestamp: now }
+        ];
+      } else if (datasetNumber === 2) {
+        path = [
+          { latlng: [37.5650, 126.9770], timestamp: now - (90 * 60 * 1000) },
+          { latlng: [37.5660, 126.9775], timestamp: now - (45 * 60 * 1000) },
+          { latlng: [37.5670, 126.9780], timestamp: now }
+        ];
+      } else if (datasetNumber === 3) {
+        path = [
+          { latlng: [37.5640, 126.9760], timestamp: now - (120 * 60 * 1000) },
+          { latlng: [37.5650, 126.9765], timestamp: now - (60 * 60 * 1000) },
+          { latlng: [37.5660, 126.9770], timestamp: now }
+        ];
+      }
+      drawPath();
+    }
+
+    function toggleGPS() {
+      gpsEnabled = !gpsEnabled;
+      if (gpsEnabled) {
+        watchId = navigator.geolocation.watchPosition(onLocationFound, onLocationError, {
+          enableHighAccuracy: true,
+          maximumAge: 0
+        });
+        alert("📍 GPS가 활성화되었습니다.\n실시간 위치 추적이 시작됩니다.");
+      } else {
+        if (watchId !== null) {
+          navigator.geolocation.clearWatch(watchId);
+          watchId = null;
+        }
+        alert("🚫 GPS가 비활성화되었습니다.");
+      }
+    }
+
+    function onLocationFound(e) {
+      const latlng = [e.latitude || e.latlng.lat, e.longitude || e.latlng.lng];
+      const timestamp = Date.now();
+      path.push({ latlng, timestamp });
+
       if (currentMarker) {
         map.removeLayer(currentMarker);
       }
-      currentMarker = L.circleMarker([lat, lng], {
+      currentMarker = L.circleMarker(latlng, {
         radius: 6,
         color: 'lime',
         fillColor: 'lime',
         fillOpacity: 1
       }).addTo(map);
 
-      map.setView([lat, lng], 15);
+      map.setView(latlng, 15);
+      drawPath();
+    }
 
-      // 과거 경로 그리기
-      if (path.length > 1) {
-        for (let i = 1; i < path.length; i++) {
-          const segmentStyle = getColorByTime(path[i].timestamp);
-          L.polyline([
-            [path[i - 1].lat, path[i - 1].lng],
-            [path[i].lat, path[i].lng]
-          ], {
-            color: segmentStyle.color,
-            opacity: segmentStyle.opacity,
-            weight: 4
-          }).addTo(map);
-        }
-      }
+    function onLocationError(e) {
+      alert("위치 정보를 가져올 수 없습니다: " + e.message);
+    }
 
-    }, error => {
-      alert('위치 정보를 불러올 수 없습니다.');
-    }, {
-      enableHighAccuracy: true,
-      maximumAge: 0
+    window.addEventListener('load', () => {
+      map = L.map('map').setView([37.5665, 126.9780], 15);
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap, CartoDB',
+      }).addTo(map);
+
+      setInterval(() => {
+        drawPath();
+      }, 60000);
     });
   </script>
 </body>
 </html>
-
