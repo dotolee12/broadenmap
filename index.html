@@ -1,11 +1,9 @@
-<!DOCTYPE html>More actions
+<!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <title>나의 대동여지도 - Dark</title>
+  <title>나의 대동여지도 - Google Maps</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <style>
     body, html {
       margin: 0;
@@ -16,73 +14,164 @@
     #map {
       height: 100%;
     }
+    .loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: white;
+      font-family: Arial, sans-serif;
+    }
   </style>
 </head>
 <body>
-  <div id="map"></div>
+  <div id="map">
+    <div class="loading">지도를 로딩중입니다...</div>
+  </div>
+  
   <script>
-    const map = L.map('map').setView([37.5665, 126.9780], 13);
-
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
-      subdomains: 'abcd',
-      maxZoom: 19
-    }).addTo(map);
-
-    let path = [];
+    let map;
     let currentMarker = null;
-
-    function getColorByDate(timestamp) {
-    // 시간 경과에 따른 색상 및 명암도 계산 함수
+    let path = [];
+    let pathLines = [];
+    
+    // 환경변수에서 API 키 가져오기 (배포 시)
+    const API_KEY = window.GOOGLE_MAPS_API_KEY || 'AIzaSyCOQhadrVL4yeRbQQgQDWdHcaYROoz3ZY8';
+    
+    // 시간 경과에 따른 색상 및 투명도 계산
     function getColorByTime(timestamp) {
       const now = new Date();
       const past = new Date(timestamp);
-      const daysPassed = Math.floor((now - past) / (1000 * 60 * 60 * 24));
-      const hoursPassed = Math.floor((now - past) / (1000 * 60 * 60)); // 시간 단위
-
-      if (daysPassed <= 1) return 'rgba(255,255,255,1.0)';
-      if (daysPassed <= 10) return 'rgba(255,255,255,0.8)';
-      if (daysPassed <= 100) return 'rgba(255,255,255,0.6)';
-      if (daysPassed <= 1000) return 'rgba(255,255,255,0.4)';
-      return 'rgba(255,255,255,0.2)';
+      const hoursPassed = Math.floor((now - past) / (1000 * 60 * 60));
+      
       let opacity = 1.0 - (hoursPassed * 0.01);
-      if (opacity < 0.3) {
-        return { color: 'purple', opacity: 0.3 };  // 흔적 표시
+      if (opacity < 0.1) {
+        return { color: '#8B00FF', opacity: 0.1 };
       }
-      return { color: 'white', opacity: opacity };
+      return { color: '#FFFFFF', opacity: Math.max(0.1, opacity) };
     }
-
-    navigator.geolocation.watchPosition(position => {
-@@ -67,19 +68,17 @@
-
-      // 과거 경로 그리기
+    
+    // 모든 경로 다시 그리기
+    function redrawPaths() {
+      pathLines.forEach(line => line.setMap(null));
+      pathLines = [];
+      
       if (path.length > 1) {
-        const segments = [];
         for (let i = 1; i < path.length; i++) {
-          segments.push({
-            coords: [
-              [path[i - 1].lat, path[i - 1].lng],
-              [path[i].lat, path[i].lng]
+          const style = getColorByTime(path[i].timestamp);
+          const line = new google.maps.Polyline({
+            path: [
+              { lat: path[i - 1].lat, lng: path[i - 1].lng },
+              { lat: path[i].lat, lng: path[i].lng }
             ],
-            color: getColorByDate(path[i].timestamp)
+            geodesic: true,
+            strokeColor: style.color,
+            strokeOpacity: style.opacity,
+            strokeWeight: 4
           });
-          const segmentStyle = getColorByTime(path[i].timestamp);
-          L.polyline([
-            [path[i - 1].lat, path[i - 1].lng],
-            [path[i].lat, path[i].lng]
-          ], {
-            color: segmentStyle.color,
-            opacity: segmentStyle.opacity,
-            weight: 4
-          }).addTo(map);
+          
+          line.setMap(map);
+          pathLines.push(line);
         }
-        segments.forEach(seg => {
-          L.polyline(seg.coords, { color: seg.color, weight: 4 }).addTo(map);
-        });
       }
-
-    }, error => {
-@@ -91,3 +90,4 @@
+    }
+    
+    // 지도 초기화
+    function initMap() {
+      document.querySelector('.loading').style.display = 'none';
+      
+      const darkMapStyle = [
+        { elementType: "geometry", stylers: [{ color: "#212121" }] },
+        { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
+        { elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
+        { elementType: "labels.text.stroke", stylers: [{ color: "#212121" }] },
+        { featureType: "administrative", elementType: "geometry", stylers: [{ color: "#757575" }] },
+        { featureType: "administrative.country", elementType: "labels.text.fill", stylers: [{ color: "#9e9e9e" }] },
+        { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#bdbdbd" }] },
+        { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
+        { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#181818" }] },
+        { featureType: "poi.park", elementType: "labels.text.fill", stylers: [{ color: "#616161" }] },
+        { featureType: "road", elementType: "geometry.fill", stylers: [{ color: "#2c2c2c" }] },
+        { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#8a8a8a" }] },
+        { featureType: "road.arterial", elementType: "geometry", stylers: [{ color: "#373737" }] },
+        { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#3c3c3c" }] },
+        { featureType: "road.highway.controlled_access", elementType: "geometry", stylers: [{ color: "#4e4e4e" }] },
+        { featureType: "road.local", elementType: "labels.text.fill", stylers: [{ color: "#616161" }] },
+        { featureType: "transit", elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
+        { featureType: "water", elementType: "geometry", stylers: [{ color: "#000000" }] },
+        { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#3d3d3d" }] }
+      ];
+      
+      map = new google.maps.Map(document.getElementById('map'), {
+        zoom: 15,
+        center: { lat: 37.5665, lng: 126.9780 },
+        styles: darkMapStyle,
+        mapTypeControl: false,
+        streetViewControl: false,
+        fullscreenControl: false
+      });
+      
+      if (navigator.geolocation) {
+        navigator.geolocation.watchPosition(
+          position => {
+            const { latitude, longitude } = position.coords;
+            
+            if (currentMarker) {
+              currentMarker.setMap(null);
+            }
+            
+            currentMarker = new google.maps.Marker({
+              position: { lat: latitude, lng: longitude },
+              map: map,
+              icon: {
+                path: google.maps.SymbolPath.CIRCLE,
+                scale: 8,
+                fillColor: '#FFFFFF',
+                fillOpacity: 0.8,
+                strokeColor: '#FFFFFF',
+                strokeWeight: 2
+              }
+            });
+            
+            path.push({
+              lat: latitude,
+              lng: longitude,
+              timestamp: Date.now()
+            });
+            
+            redrawPaths();
+            map.setCenter({ lat: latitude, lng: longitude });
+          },
+          error => {
+            console.error('위치 추적 오류:', error);
+            alert('위치 추적을 위해 위치 권한을 허용해주세요.');
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 1000
+          }
+        );
+      } else {
+        alert('이 브라우저는 위치 추적을 지원하지 않습니다.');
+      }
+      
+      setInterval(() => {
+        redrawPaths();
+      }, 5000);
+    }
+    
+    // 동적으로 Google Maps API 로드
+    function loadGoogleMaps() {
+      const script = document.createElement('script');
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${API_KEY}&callback=initMap`;
+      script.async = true;
+      script.defer = true;
+      document.head.appendChild(script);
+    }
+    
+    // 페이지 로드 시 실행
+    loadGoogleMaps();
   </script>
 </body>
 </html>
