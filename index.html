@@ -35,9 +35,6 @@
     let path = [];
     let pathLines = [];
     
-    // 환경변수에서 API 키 가져오기 (배포 시)
-    const API_KEY = window.GOOGLE_MAPS_API_KEY || 'AIzaSyCOQhadrVL4yeRbQQgQDWdHcaYROoz3ZY8';
-    
     // 시간 경과에 따른 색상 및 투명도 계산
     function getColorByTime(timestamp) {
       const now = new Date();
@@ -160,18 +157,11 @@
         redrawPaths();
       }, 5000);
     }
-    
-    // 동적으로 Google Maps API 로드
-    function loadGoogleMaps() {
-      const script = document.createElement('script');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${API_KEY}&callback=initMap`;
-      script.async = true;
-      script.defer = true;
-      document.head.appendChild(script);
-    }
-    
-    // 페이지 로드 시 실행
-    loadGoogleMaps();
+  </script>
+  
+  <!-- Google Maps API 로드 -->
+  <script async defer 
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCOQhadrVL4yeRbQQgQDWdHcaYROoz3ZY8&callback=initMap">
   </script>
 </body>
 </html>
