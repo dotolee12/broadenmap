@@ -39,13 +39,32 @@
     function getColorByTime(timestamp) {
       const now = new Date();
       const past = new Date(timestamp);
-      const hoursPassed = Math.floor((now - past) / (1000 * 60 * 60));
+      const minutesPassed = Math.floor((now - past) / (1000 * 60));
+      const daysPassed = Math.floor((now - past) / (1000 * 60 * 60 * 24));
       
-      let opacity = 1.0 - (hoursPassed * 0.01);
-      if (opacity < 0.1) {
-        return { color: '#8B00FF', opacity: 0.1 };
+      // 1분에 투명도 1씩 감소 (최소 30까지)
+      let opacity = Math.max(0.3, 1.0 - (minutesPassed * 0.01));
+      
+      // 시간대별 색상 결정
+      if (daysPassed >= 365 * 3) {
+        // 3년 이상: 보라색
+        return { color: '#9966CC', opacity: 0.3 };
+      } else if (daysPassed >= 365) {
+        // 1년 이상: 빨간색
+        return { color: '#FF4444', opacity: 0.3 };
+      } else if (daysPassed >= 30) {
+        // 1달 이상: 노란색
+        return { color: '#FFD700', opacity: 0.3 };
+      } else if (daysPassed >= 7) {
+        // 7일 이상: 주황색
+        return { color: '#FF8C00', opacity: 0.3 };
+      } else if (daysPassed >= 1) {
+        // 1일 이상: 초록색
+        return { color: '#00FF88', opacity: 0.3 };
+      } else {
+        // 1일 미만: 흰색 (점진적 투명도)
+        return { color: '#FFFFFF', opacity: opacity };
       }
-      return { color: '#FFFFFF', opacity: Math.max(0.1, opacity) };
     }
     
     // 모든 경로 다시 그리기
@@ -153,9 +172,10 @@
         alert('이 브라우저는 위치 추적을 지원하지 않습니다.');
       }
       
+      // 1초마다 경로 색상 업데이트 (더 빠른 변화 확인)
       setInterval(() => {
         redrawPaths();
-      }, 5000);
+      }, 1000);
     }
   </script>
   
