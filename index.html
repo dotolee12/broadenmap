@@ -1,187 +1,782 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <title>나의 대동여지도 - Google Maps</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body, html {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      background: black;
-    }
-    #map {
-      height: 100%;
-    }
-    .loading {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      color: white;
-      font-family: Arial, sans-serif;
-    }
-  </style>
-</head>
-<body>
-  <div id="map">
-    <div class="loading">지도를 로딩중입니다...</div>
-  </div>
-  
-  <script>
-    let map;
-    let currentMarker = null;
-    let path = [];
-    let pathLines = [];
-    
-    // 시간 경과에 따른 색상 및 투명도 계산
-    function getColorByTime(timestamp) {
-      const now = new Date();
-      const past = new Date(timestamp);
-      const minutesPassed = Math.floor((now - past) / (1000 * 60));
-      const daysPassed = Math.floor((now - past) / (1000 * 60 * 60 * 24));
-      
-      // 1분에 투명도 1씩 감소 (최소 30까지)
-      let opacity = Math.max(0.3, 1.0 - (minutesPassed * 0.01));
-      
-      // 시간대별 색상 결정
-      if (daysPassed >= 365 * 3) {
-        // 3년 이상: 보라색
-        return { color: '#9966CC', opacity: 0.3 };
-      } else if (daysPassed >= 365) {
-        // 1년 이상: 빨간색
-        return { color: '#FF4444', opacity: 0.3 };
-      } else if (daysPassed >= 30) {
-        // 1달 이상: 노란색
-        return { color: '#FFD700', opacity: 0.3 };
-      } else if (daysPassed >= 7) {
-        // 7일 이상: 주황색
-        return { color: '#FF8C00', opacity: 0.3 };
-      } else if (daysPassed >= 1) {
-        // 1일 이상: 초록색
-        return { color: '#00FF88', opacity: 0.3 };
-      } else {
-        // 1일 미만: 흰색 (점진적 투명도)
-        return { color: '#FFFFFF', opacity: opacity };
-      }
-    }
-    
-    // 모든 경로 다시 그리기
-    function redrawPaths() {
-      pathLines.forEach(line => line.setMap(null));
-      pathLines = [];
-      
-      if (path.length > 1) {
-        for (let i = 1; i < path.length; i++) {
-          const style = getColorByTime(path[i].timestamp);
-          const line = new google.maps.Polyline({
-            path: [
-              { lat: path[i - 1].lat, lng: path[i - 1].lng },
-              { lat: path[i].lat, lng: path[i].lng }
-            ],
-            geodesic: true,
-            strokeColor: style.color,
-            strokeOpacity: style.opacity,
-            strokeWeight: 4
-          });
-          
-          line.setMap(map);
-          pathLines.push(line);
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>나의 대동여지도 - 통합 버전</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
-      }
-    }
-    
-    // 지도 초기화
-    function initMap() {
-      document.querySelector('.loading').style.display = 'none';
-      
-      const darkMapStyle = [
-        { elementType: "geometry", stylers: [{ color: "#212121" }] },
-        { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
-        { elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
-        { elementType: "labels.text.stroke", stylers: [{ color: "#212121" }] },
-        { featureType: "administrative", elementType: "geometry", stylers: [{ color: "#757575" }] },
-        { featureType: "administrative.country", elementType: "labels.text.fill", stylers: [{ color: "#9e9e9e" }] },
-        { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#bdbdbd" }] },
-        { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
-        { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#181818" }] },
-        { featureType: "poi.park", elementType: "labels.text.fill", stylers: [{ color: "#616161" }] },
-        { featureType: "road", elementType: "geometry.fill", stylers: [{ color: "#2c2c2c" }] },
-        { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#8a8a8a" }] },
-        { featureType: "road.arterial", elementType: "geometry", stylers: [{ color: "#373737" }] },
-        { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#3c3c3c" }] },
-        { featureType: "road.highway.controlled_access", elementType: "geometry", stylers: [{ color: "#4e4e4e" }] },
-        { featureType: "road.local", elementType: "labels.text.fill", stylers: [{ color: "#616161" }] },
-        { featureType: "transit", elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
-        { featureType: "water", elementType: "geometry", stylers: [{ color: "#000000" }] },
-        { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#3d3d3d" }] }
-      ];
-      
-      map = new google.maps.Map(document.getElementById('map'), {
-        zoom: 15,
-        center: { lat: 37.5665, lng: 126.9780 },
-        styles: darkMapStyle,
-        mapTypeControl: false,
-        streetViewControl: false,
-        fullscreenControl: false
-      });
-      
-      if (navigator.geolocation) {
-        navigator.geolocation.watchPosition(
-          position => {
-            const { latitude, longitude } = position.coords;
-            
-            if (currentMarker) {
-              currentMarker.setMap(null);
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            color: white;
+            overflow: hidden;
+        }
+
+        .version-selector {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+        }
+
+        .selector-content {
+            text-align: center;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 40px;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .selector-title {
+            font-size: 32px;
+            margin-bottom: 20px;
+            background: linear-gradient(45deg, #4ecdc4, #44a08d);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .selector-subtitle {
+            font-size: 16px;
+            margin-bottom: 40px;
+            color: rgba(255, 255, 255, 0.8);
+            line-height: 1.5;
+        }
+
+        .version-options {
+            display: flex;
+            gap: 30px;
+            justify-content: center;
+        }
+
+        .version-card {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 30px;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+            width: 250px;
+        }
+
+        .version-card:hover {
+            transform: translateY(-5px);
+            border-color: #4ecdc4;
+            box-shadow: 0 10px 30px rgba(78, 205, 196, 0.3);
+        }
+
+        .version-card h3 {
+            font-size: 20px;
+            margin-bottom: 15px;
+            color: #4ecdc4;
+        }
+
+        .version-card p {
+            font-size: 14px;
+            line-height: 1.4;
+            margin-bottom: 10px;
+        }
+
+        .version-card .features {
+            margin-top: 15px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+
+        .sidebar {
+            width: 350px;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 20px;
+            overflow-y: auto;
+            backdrop-filter: blur(10px);
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 2px 0 20px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+        }
+
+        .main {
+            flex: 1;
+            position: relative;
+        }
+
+        h1 {
+            color: #4ecdc4;
+            margin-bottom: 20px;
+            text-align: center;
+            font-size: 22px;
+            background: linear-gradient(45deg, #4ecdc4, #44a08d);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .section {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 15px;
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .section h3 {
+            margin-bottom: 12px;
+            color: #4ecdc4;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        button {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 8px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 13px;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+            background: linear-gradient(45deg, #5a67d8, #6c5ce7);
+        }
+
+        button.active {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a52);
+            box-shadow: 0 5px 20px rgba(255, 107, 107, 0.3);
+        }
+
+        .button-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+
+        .time-display {
+            font-weight: bold;
+            text-align: center;
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 8px;
+            margin-bottom: 12px;
+            font-size: 16px;
+            border: 1px solid rgba(76, 175, 80, 0.3);
+        }
+
+        .instruction {
+            background: rgba(76, 175, 80, 0.15);
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 12px;
+            border-left: 4px solid #4caf50;
+            line-height: 1.4;
+        }
+
+        .legend {
+            background: rgba(255, 255, 255, 0.08);
+            padding: 12px;
+            border-radius: 8px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 6px;
+            font-size: 11px;
+            line-height: 1.3;
+        }
+
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 3px;
+            margin-right: 10px;
+            opacity: 0.7;
+            flex-shrink: 0;
+        }
+
+        #map, #canvas {
+            height: 100vh;
+            width: 100%;
+        }
+
+        #canvas {
+            background: linear-gradient(45deg, #2c3e50, #34495e);
+            cursor: crosshair;
+        }
+
+        .stats {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            margin-bottom: 8px;
+        }
+
+        .stats span {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 10px;
+            color: #4ecdc4;
+            z-index: 2000;
+        }
+
+        .version-switch {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1500;
+        }
+
+        .version-switch button {
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 8px 12px;
+            margin: 0 2px;
+            font-size: 12px;
+        }
+
+        .current-mode {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: #4ecdc4;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            z-index: 1500;
+        }
+
+        /* 반응형 디자인 */
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
             }
             
-            currentMarker = new google.maps.Marker({
-              position: { lat: latitude, lng: longitude },
-              map: map,
-              icon: {
-                path: google.maps.SymbolPath.CIRCLE,
-                scale: 8,
-                fillColor: '#FFFFFF',
-                fillOpacity: 0.8,
-                strokeColor: '#FFFFFF',
-                strokeWeight: 2
-              }
+            .sidebar {
+                width: 100%;
+                height: 45vh;
+                overflow-y: scroll;
+            }
+            
+            .main {
+                height: 55vh;
+            }
+            
+            #map, #canvas {
+                height: 55vh;
+            }
+
+            .version-options {
+                flex-direction: column;
+                gap: 20px;
+            }
+
+            .version-card {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 버전 선택 화면 -->
+    <div class="version-selector" id="versionSelector">
+        <div class="selector-content">
+            <h1 class="selector-title">🗺️ 나의 대동여지도</h1>
+            <p class="selector-subtitle">
+                김정호의 대동여지도에서 영감을 받은<br>
+                개인 이동 경로 시각화 시스템
+            </p>
+            
+            <div class="version-options">
+                <div class="version-card" onclick="selectVersion('map')">
+                    <h3>🌍 실제 지도 버전</h3>
+                    <p>OpenStreetMap을 기반으로 한 실제 GPS 위치 추적</p>
+                    <div class="features">
+                        ✅ 실제 지도 위 시각화<br>
+                        ✅ GPS 좌표 정확성<br>
+                        ✅ 줌/팬 기능<br>
+                        ✅ 현재 위치 지원<br>
+                        ⚠️ 인터넷 연결 필요
+                    </div>
+                </div>
+                
+                <div class="version-card" onclick="selectVersion('canvas')">
+                    <h3>🎨 Canvas 버전</h3>
+                    <p>순수 Canvas 기반의 빠른 프로토타입</p>
+                    <div class="features">
+                        ✅ 빠른 로딩<br>
+                        ✅ 오프라인 작동<br>
+                        ✅ 부드러운 애니메이션<br>
+                        ✅ 외부 의존성 없음<br>
+                        ℹ️ 테스트/데모용
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 메인 애플리케이션 -->
+    <div class="container" id="mainApp" style="display: none;">
+        <div class="sidebar">
+            <h1>🗺️ 나의 대동여지도</h1>
+            <div style="text-align: center; font-size: 12px; color: #4ecdc4; margin-bottom: 15px;" id="currentMode">
+                <!-- 현재 모드 표시 -->
+            </div>
+            
+            <div class="instruction" id="instructionText">
+                <!-- 모드별 설명 -->
+            </div>
+            
+            <!-- 지도 버전 전용 컨트롤 -->
+            <div class="section" id="mapControls" style="display: none;">
+                <h3>📍 위치 제어</h3>
+                <div class="button-group">
+                    <button onclick="getCurrentLocation()">현재 위치</button>
+                    <button onclick="goToSeoul()">서울시청</button>
+                    <button onclick="goToGangnam()">강남역</button>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h3>⏱️ 시뮬레이션 제어</h3>
+                <div class="button-group">
+                    <button onclick="toggleSimulation()" id="simBtn">시뮬레이션 시작</button>
+                    <button onclick="addRandomRoute()">랜덤 경로 추가</button>
+                    <button onclick="clearAll()">모든 데이터 삭제</button>
+                </div>
+                
+                <div style="margin-top: 10px;">
+                    <strong>시간 가속:</strong>
+                    <div class="button-group" style="margin-top: 5px;">
+                        <button onclick="setSpeed(1)" class="speed active">1x</button>
+                        <button onclick="setSpeed(60)" class="speed">60x</button>
+                        <button onclick="setSpeed(600)" class="speed">600x</button>
+                        <button onclick="setSpeed(3600)" class="speed">3600x</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h3>📊 현재 상태</h3>
+                <div class="time-display" id="timeDisplay">2024-01-01 12:00:00</div>
+                <div class="stats">
+                    <span>가속: <span id="speedText">1x</span></span>
+                    <span>상태: <span id="status">정지</span></span>
+                </div>
+                <div class="stats">
+                    <span id="routeCount">경로: 0개</span>
+                    <span id="stayCount">체류: 0곳</span>
+                </div>
+                <div class="stats" id="locationStats" style="display: none;">
+                    <span id="currentLocation">위치: 준비중</span>
+                </div>
+            </div>
+
+            <div class="section">
+                <h3>🎨 5단계 기억 시스템</h3>
+                <div class="legend">
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #FFFFFF; border: 1px solid #666;"></div>
+                        <span>1단계: 흰색 (100%→40%, 10시간)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #90EE90;"></div>
+                        <span>→ 연두색 (40%)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #32CD32;"></div>
+                        <span>2단계: 초록색 (40%, 14시간)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #FFA500;"></div>
+                        <span>3단계: 주황색 (40%, 7일)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #FF0000;"></div>
+                        <span>4단계: 빨간색 (40%, 100일)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #8B4513;"></div>
+                        <span>5단계: 갈색 (40%, 영구)</span>
+                    </div>
+                    <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.2); font-size: 10px;" id="stayInfo">
+                        <strong>🔵 체류 지점:</strong> 30분=25m → 120분=100m 반경
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="main">
+            <div class="loading" id="loading" style="display: none;">
+                🗺️ 지도 로딩 중...
+            </div>
+
+            <div class="current-mode" id="modeIndicator"></div>
+
+            <div class="version-switch">
+                <button onclick="switchVersion()">다른 버전</button>
+                <button onclick="showVersionSelector()">버전 선택</button>
+            </div>
+
+            <div id="map" style="display: none;"></div>
+            <canvas id="canvas" style="display: none;"></canvas>
+        </div>
+    </div>
+
+    <script>
+        // 전역 변수
+        let currentVersion = null;
+        let map = null;
+        let canvas = null;
+        let ctx = null;
+        let routes = [];
+        let stayPoints = [];
+        let running = false;
+        let currentTime = new Date('2024-01-01T12:00:00');
+        let speed = 1;
+        let interval;
+        let clickPoint = null;
+        let lastClickTime = null;
+        let mapReady = false;
+
+        // 버전 선택
+        function selectVersion(version) {
+            currentVersion = version;
+            document.getElementById('versionSelector').style.display = 'none';
+            document.getElementById('mainApp').style.display = 'flex';
+            
+            if (version === 'map') {
+                initMapVersion();
+            } else {
+                initCanvasVersion();
+            }
+        }
+
+        // 지도 버전 초기화
+        function initMapVersion() {
+            document.getElementById('currentMode').textContent = '실제 지도 버전';
+            document.getElementById('modeIndicator').textContent = '🌍 지도 모드';
+            document.getElementById('mapControls').style.display = 'block';
+            document.getElementById('locationStats').style.display = 'flex';
+            document.getElementById('instructionText').innerHTML = `
+                🌍 <strong>실제 지도 기반</strong><br>
+                OpenStreetMap을 사용한 실제 위치 추적 시스템입니다.<br><br>
+                📍 <strong>사용법:</strong><br>
+                • <strong>첫 클릭:</strong> 실제 위치에서 머무르기 시작<br>
+                • <strong>두 번째 클릭:</strong> 다른 위치로 이동<br>
+                • <strong>체류 지점:</strong> 30분+ 머무르면 원형으로 표시<br>
+                • <strong>줌/팬:</strong> 지도 확대/축소 및 이동 가능
+            `;
+            document.getElementById('stayInfo').innerHTML = '<strong>🔵 체류 지점:</strong> 30분=25m → 120분=100m 반경';
+            
+            document.getElementById('map').style.display = 'block';
+            document.getElementById('canvas').style.display = 'none';
+            document.getElementById('loading').style.display = 'block';
+            
+            initMap();
+        }
+
+        // Canvas 버전 초기화
+        function initCanvasVersion() {
+            document.getElementById('currentMode').textContent = 'Canvas 버전';
+            document.getElementById('modeIndicator').textContent = '🎨 Canvas 모드';
+            document.getElementById('mapControls').style.display = 'none';
+            document.getElementById('locationStats').style.display = 'none';
+            document.getElementById('instructionText').innerHTML = `
+                🎨 <strong>Canvas 기반 프로토타입</strong><br>
+                빠른 렌더링과 부드러운 애니메이션을 제공합니다.<br><br>
+                📍 <strong>사용법:</strong><br>
+                • <strong>첫 클릭:</strong> 머무르기 시작 (체류시간 누적)<br>
+                • <strong>두 번째 클릭:</strong> 이동 완료 (경로 생성)<br>
+                • <strong>체류 지점:</strong> 30분+ 머무르면 원형으로 표시<br>
+                • <strong>격자 배경:</strong> 좌표 참조용
+            `;
+            document.getElementById('stayInfo').innerHTML = '<strong>🔵 체류 지점:</strong> 30분=2.5m → 120분=10m 반경';
+            
+            document.getElementById('map').style.display = 'none';
+            document.getElementById('canvas').style.display = 'block';
+            
+            initCanvas();
+        }
+
+        // 지도 초기화 (Leaflet)
+        function initMap() {
+            try {
+                console.log('지도 초기화 시작...');
+                
+                map = L.map('map').setView([37.5665, 126.9780], 16);
+                
+                const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors',
+                    maxZoom: 19
+                });
+                
+                tileLayer.addTo(map);
+                
+                map.on('click', function(e) {
+                    if (mapReady) {
+                        handleMapClick(e.latlng);
+                    }
+                });
+                
+                map.whenReady(function() {
+                    console.log('지도 완전 초기화 완료');
+                    mapReady = true;
+                    document.getElementById('loading').style.display = 'none';
+                    updateCurrentLocation();
+                    
+                    setTimeout(() => {
+                        addRandomRoute();
+                        addRandomRoute();
+                        addRandomRoute();
+                    }, 1000);
+                });
+                
+                map.on('moveend', updateCurrentLocation);
+                
+            } catch (error) {
+                console.error('지도 초기화 실패:', error);
+                document.getElementById('loading').innerHTML = '❌ 지도 로딩 실패';
+            }
+        }
+
+        // Canvas 초기화
+        function initCanvas() {
+            canvas = document.getElementById('canvas');
+            ctx = canvas.getContext('2d');
+            
+            resizeCanvas();
+            
+            canvas.addEventListener('click', function(e) {
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                handleCanvasClick({x, y});
             });
             
-            path.push({
-              lat: latitude,
-              lng: longitude,
-              timestamp: Date.now()
-            });
+            // 초기 테스트 데이터
+            setTimeout(() => {
+                addRandomRoute();
+                addRandomRoute();
+                addRandomRoute();
+            }, 500);
+        }
+
+        // Canvas 크기 조정
+        function resizeCanvas() {
+            if (canvas) {
+                canvas.width = canvas.offsetWidth;
+                canvas.height = canvas.offsetHeight;
+                if (currentVersion === 'canvas') {
+                    drawCanvas();
+                }
+            }
+        }
+
+        // 거리 계산 함수들
+        function getStayRadius(stayMinutes) {
+            if (stayMinutes < 30) return 0;
             
-            redrawPaths();
-            map.setCenter({ lat: latitude, lng: longitude });
-          },
-          error => {
-            console.error('위치 추적 오류:', error);
-            alert('위치 추적을 위해 위치 권한을 허용해주세요.');
-          },
-          {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 1000
-          }
-        );
-      } else {
-        alert('이 브라우저는 위치 추적을 지원하지 않습니다.');
-      }
-      
-      // 1초마다 경로 색상 업데이트 (더 빠른 변화 확인)
-      setInterval(() => {
-        redrawPaths();
-      }, 1000);
-    }
-  </script>
-  
-  <!-- Google Maps API 로드 -->
-  <script async defer 
-    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBBdS0sg5Dt_wSXmIiJAMGf70QN01tYbQw&callback=initMap">
-  </script>
-</body>
-</html>
+            if (currentVersion === 'map') {
+                const baseRadius = 25; // 25m
+                const maxRadius = 100; // 100m
+                const minStay = 30;
+                const maxStay = 120;
+                
+                if (stayMinutes >= maxStay) return maxRadius;
+                const progress = (stayMinutes - minStay) / (maxStay - minStay);
+                return baseRadius + (maxRadius - baseRadius) * progress;
+            } else {
+                const baseRadius = 2.5;
+                const maxRadius = 10;
+                const minStay = 30;
+                const maxStay = 120;
+                
+                if (stayMinutes >= maxStay) return maxRadius;
+                const progress = (stayMinutes - minStay) / (maxStay - minStay);
+                return baseRadius + (maxRadius - baseRadius) * progress;
+            }
+        }
+
+        function getDistance(p1, p2) {
+            if (currentVersion === 'map') {
+                return map.distance(p1, p2);
+            } else {
+                const dx = p1.x - p2.x;
+                const dy = p1.y - p2.y;
+                return Math.sqrt(dx * dx + dy * dy);
+            }
+        }
+
+        // 경로 상태 계산
+        function getRouteState(ageInMinutes) {
+            if (ageInMinutes < 600) {
+                const opacity = Math.max(0.4, 1.0 - (ageInMinutes / 600) * 0.6);
+                if (opacity <= 0.4) {
+                    return { color: '#90EE90', opacity: 0.4 };
+                }
+                return { color: '#FFFFFF', opacity: opacity };
+            } else if (ageInMinutes < 1440) {
+                return { color: '#32CD32', opacity: 0.4 };
+            } else if (ageInMinutes < 10080) {
+                return { color: '#FFA500', opacity: 0.4 };
+            } else if (ageInMinutes < 144000) {
+                return { color: '#FF0000', opacity: 0.4 };
+            } else {
+                return { color: '#8B4513', opacity: 0.4 };
+            }
+        }
+
+        // 체류 지점 업데이트
+        function updateStayPoint(point, currentTime, isStaying = true) {
+            const threshold = currentVersion === 'map' ? 50 : 20;
+            
+            for (let stay of stayPoints) {
+                const stayPoint = currentVersion === 'map' ? stay.latlng : stay;
+                if (getDistance(point, stayPoint) < threshold) {
+                    if (isStaying) {
+                        stay.endTime = new Date(currentTime);
+                        const duration = ((stay.endTime - stay.startTime) / 60000).toFixed(1);
+                        console.log(`기존 체류지점 연장: ${duration}분`);
+                        
+                        if (currentVersion === 'map' && stay.circle) {
+                            const newRadius = getStayRadius(duration);
+                            stay.circle.setRadius(newRadius);
+                        }
+                    }
+                    return stay;
+                }
+            }
+            
+            if (isStaying) {
+                const newStay = {
+                    [currentVersion === 'map' ? 'latlng' : 'x']: currentVersion === 'map' ? point : point.x,
+                    [currentVersion === 'map' ? 'y' : 'y']: currentVersion === 'map' ? undefined : point.y,
+                    startTime: new Date(currentTime),
+                    endTime: new Date(currentTime),
+                    created: new Date(currentTime),
+                    circle: null,
+                    marker: null
+                };
+                stayPoints.push(newStay);
+                console.log('새로운 체류지점 생성');
+                return newStay;
+            }
+            
+            return null;
+        }
+
+        // 지도 클릭 처리
+        function handleMapClick(latlng) {
+            if (!clickPoint) {
+                clickPoint = {
+                    latlng: latlng,
+                    marker: L.marker(latlng, {
+                        icon: L.divIcon({
+                            className: 'start-marker',
+                            html: '<div style="background: #ff6b6b; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white;"></div>',
+                            iconSize: [16, 16],
+                            iconAnchor: [8, 8]
+                        })
+                    }).addTo(map)
+                };
+                lastClickTime = new Date(currentTime);
+                console.log('시작점 설정 (머무르기 시작)');
+                updateStayPoint(latlng, currentTime, true);
+            } else {
+                const stayDuration = (currentTime - lastClickTime) / (1000 * 60);
+                console.log(`이전 지점 체류 완료: ${stayDuration.toFixed(1)}분`);
+                
+                const route = {
+                    start: clickPoint.latlng,
+                    end: latlng,
+                    created: new Date(currentTime),
+                    polyline: null
+                };
+                
+                route.polyline = L.polyline([clickPoint.latlng, latlng], {
+                    color: '#FFFFFF',
+                    weight: 4,
+                    opacity: 1.0
+                }).addTo(map);
+                
+                routes.push(route);
+                
+                if (clickPoint.marker) {
+                    map.removeLayer(clickPoint.marker);
+                }
+                
+                updateStayPoint(latlng, currentTime, false);
+                
+                clickPoint = null;
+                lastClickTime = null;
+                console.log('경로 생성 완료 (이동함)');
+                updateCount();
+            }
+        }
+
+        // Canvas 클릭 처리
+        function handleCanvasClick(point) {
+            if (!clickPoint) {
+                clickPoint = point;
+                lastClickTime = new Date(currentTime);
+                console.log('시작점 설정 (머무르기 시작)');
+                updateStayPoint(point, currentTime, true);
+            } else {
+                const stayDuration = (currentTime - lastClickTime) / (1000 * 60);
+                console.log(`이전 지점 체류 완료: ${stayDuration.toFixed(1)}분`);
+                
+                const route = {
+                    start: clickPoint,
+                    end: point,
+                    created: new Date(currentTime)
+                };
+                routes.push(route);
+                
+                updateStayPoint(point, currentTime, false);
+                
+                <!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>나의 대동여지도 - 통합 버전
