@@ -2,781 +2,500 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>나의 대동여지도 - 통합 버전</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>wayou — 나의 대동여지도</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --ui-bg: rgba(10,10,14,0.85);
+            --ui-border: rgba(255,255,255,0.07);
+            --ui-text: #e8e6e0;
+            --ui-muted: rgba(232,230,224,0.4);
+            --accent: #c8b89a;
+        }
+        body { font-family: 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; background: #0a0a0e; overflow: hidden; color: var(--ui-text); }
+        #map { height: 100vh; width: 100%; z-index: 1; }
+
+        /* 안개 캔버스 — 지도 위에 고정 */
+        #fog-canvas {
+            position: fixed; inset: 0; z-index: 2;
+            pointer-events: none;
         }
 
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #1a1a2e, #16213e);
-            color: white;
-            overflow: hidden;
+        .hamburger {
+            position: fixed; top: 22px; left: 18px; z-index: 4000;
+            cursor: pointer; padding: 9px 10px;
+            background: var(--ui-bg); border: 1px solid var(--ui-border);
+            border-radius: 10px; backdrop-filter: blur(16px);
         }
+        .hamburger .line { width: 20px; height: 2px; background: var(--ui-text); margin: 4px 0; border-radius: 2px; }
 
-        .version-selector {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: linear-gradient(135deg, #1a1a2e, #16213e);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 10000;
+        .status-pill {
+            position: fixed; top: 22px; left: 68px; z-index: 4000;
+            padding: 8px 14px; border-radius: 20px;
+            background: var(--ui-bg); border: 1px solid var(--ui-border);
+            backdrop-filter: blur(16px); font-size: 12px; color: var(--ui-muted);
+            display: flex; align-items: center; gap: 7px;
+            opacity: 0; transition: opacity 0.4s; pointer-events: none;
         }
+        .status-pill.on { opacity: 1; }
+        .s-dot { width: 6px; height: 6px; border-radius: 50%; background: white; animation: blink 1.6s ease-in-out infinite; }
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
 
-        .selector-content {
-            text-align: center;
-            background: rgba(0, 0, 0, 0.8);
-            padding: 40px;
-            border-radius: 20px;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+        .menu-overlay {
+            position: fixed; inset: 0; z-index: 5000;
+            background: rgba(0,0,0,0.55); backdrop-filter: blur(6px);
+            display: flex; align-items: flex-end; justify-content: center;
+            opacity: 0; pointer-events: none; transition: opacity 0.3s;
         }
-
-        .selector-title {
-            font-size: 32px;
-            margin-bottom: 20px;
-            background: linear-gradient(45deg, #4ecdc4, #44a08d);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+        .menu-overlay.open { opacity: 1; pointer-events: auto; }
+        .menu-sheet {
+            width: 100%; max-width: 480px;
+            background: #111118; border: 1px solid var(--ui-border);
+            border-bottom: none; border-radius: 20px 20px 0 0;
+            padding: 0 0 44px;
+            transform: translateY(100%);
+            transition: transform 0.38s cubic-bezier(.25,.8,.25,1);
         }
+        .menu-overlay.open .menu-sheet { transform: translateY(0); }
+        .handle { width: 36px; height: 4px; background: rgba(255,255,255,0.13); border-radius: 2px; margin: 14px auto 22px; cursor: pointer; }
+        .sheet-section { font-size: 10px; letter-spacing: 3px; color: var(--accent); padding: 0 24px; margin-bottom: 10px; }
 
-        .selector-subtitle {
-            font-size: 16px;
-            margin-bottom: 40px;
-            color: rgba(255, 255, 255, 0.8);
-            line-height: 1.5;
+        .mbtn {
+            width: calc(100% - 48px); margin: 5px 24px;
+            background: rgba(255,255,255,0.03); border: 1px solid var(--ui-border);
+            border-radius: 14px; padding: 15px 18px;
+            display: flex; align-items: center; gap: 14px;
+            cursor: pointer; transition: background 0.2s; color: var(--ui-text);
         }
+        .mbtn:hover { background: rgba(255,255,255,0.07); }
+        .mbtn.rec { border-color: rgba(255,255,255,0.2); background: rgba(255,255,255,0.06); }
+        .micon { width: 34px; height: 34px; border-radius: 50%; display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0; }
+        .mlabel { flex:1; }
+        .mname { font-size: 14px; }
+        .msub  { font-size: 11px; color: var(--ui-muted); margin-top: 2px; }
+        .mbadge { font-size: 10px; padding: 3px 9px; border-radius: 10px; background: rgba(255,255,255,0.07); color: var(--ui-muted); }
+        .mdivider { height: 1px; background: var(--ui-border); margin: 12px 24px; }
 
-        .version-options {
-            display: flex;
-            gap: 30px;
-            justify-content: center;
+        .bottom-panel {
+            position: fixed; bottom: 0; left: 0; right: 0; z-index: 3000;
+            background: var(--ui-bg); border-top: 1px solid var(--ui-border);
+            backdrop-filter: blur(20px);
+            padding: 14px 0 30px;
+            display: grid; grid-template-columns: 1fr 1fr 1fr;
         }
+        .stat { text-align: center; }
+        .stat + .stat { border-left: 1px solid var(--ui-border); }
+        .sval { font-size: 24px; font-weight: 700; color: var(--ui-text); line-height: 1; }
+        .sunit { font-size: 11px; color: var(--ui-muted); }
+        .slabel { font-size: 10px; color: var(--ui-muted); margin-top: 4px; letter-spacing: 0.5px; }
 
-        .version-card {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 30px;
-            border-radius: 15px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            border: 2px solid transparent;
-            width: 250px;
+        .history-panel {
+            position: fixed; inset: 0; z-index: 6000;
+            background: #0a0a0e; overflow-y: auto;
+            transform: translateX(100%); transition: transform 0.38s cubic-bezier(.25,.8,.25,1);
         }
-
-        .version-card:hover {
-            transform: translateY(-5px);
-            border-color: #4ecdc4;
-            box-shadow: 0 10px 30px rgba(78, 205, 196, 0.3);
-        }
-
-        .version-card h3 {
-            font-size: 20px;
-            margin-bottom: 15px;
-            color: #4ecdc4;
-        }
-
-        .version-card p {
-            font-size: 14px;
-            line-height: 1.4;
-            margin-bottom: 10px;
-        }
-
-        .version-card .features {
-            margin-top: 15px;
-            font-size: 12px;
-            color: rgba(255, 255, 255, 0.7);
-        }
-
-        .container {
-            display: flex;
-            height: 100vh;
-        }
-
-        .sidebar {
-            width: 350px;
-            background: rgba(0, 0, 0, 0.85);
-            padding: 20px;
-            overflow-y: auto;
-            backdrop-filter: blur(10px);
-            border-right: 1px solid rgba(255, 255, 255, 0.1);
-            box-shadow: 2px 0 20px rgba(0, 0, 0, 0.3);
-            z-index: 1000;
-        }
-
-        .main {
-            flex: 1;
-            position: relative;
-        }
-
-        h1 {
-            color: #4ecdc4;
-            margin-bottom: 20px;
-            text-align: center;
-            font-size: 22px;
-            background: linear-gradient(45deg, #4ecdc4, #44a08d);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-
-        .section {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 15px;
-            border-radius: 12px;
-            margin-bottom: 15px;
-            backdrop-filter: blur(5px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .section h3 {
-            margin-bottom: 12px;
-            color: #4ecdc4;
-            font-size: 16px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        button {
-            padding: 10px 15px;
-            border: none;
-            border-radius: 8px;
-            background: linear-gradient(45deg, #667eea, #764ba2);
-            color: white;
-            cursor: pointer;
-            margin: 5px;
-            font-size: 13px;
-            transition: all 0.3s ease;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-        }
-
-        button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
-            background: linear-gradient(45deg, #5a67d8, #6c5ce7);
-        }
-
-        button.active {
-            background: linear-gradient(45deg, #ff6b6b, #ee5a52);
-            box-shadow: 0 5px 20px rgba(255, 107, 107, 0.3);
-        }
-
-        .button-group {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 5px;
-        }
-
-        .time-display {
-            font-weight: bold;
-            text-align: center;
-            padding: 12px;
-            background: rgba(0, 0, 0, 0.4);
-            border-radius: 8px;
-            margin-bottom: 12px;
-            font-size: 16px;
-            border: 1px solid rgba(76, 175, 80, 0.3);
-        }
-
-        .instruction {
-            background: rgba(76, 175, 80, 0.15);
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 15px;
-            font-size: 12px;
-            border-left: 4px solid #4caf50;
-            line-height: 1.4;
-        }
-
-        .legend {
-            background: rgba(255, 255, 255, 0.08);
-            padding: 12px;
-            border-radius: 8px;
-        }
-
-        .legend-item {
-            display: flex;
-            align-items: center;
-            margin-bottom: 6px;
-            font-size: 11px;
-            line-height: 1.3;
-        }
-
-        .legend-color {
-            width: 16px;
-            height: 16px;
-            border-radius: 3px;
-            margin-right: 10px;
-            opacity: 0.7;
-            flex-shrink: 0;
-        }
-
-        #map, #canvas {
-            height: 100vh;
-            width: 100%;
-        }
-
-        #canvas {
-            background: linear-gradient(45deg, #2c3e50, #34495e);
-            cursor: crosshair;
-        }
-
-        .stats {
-            display: flex;
-            justify-content: space-between;
-            font-size: 12px;
-            margin-bottom: 8px;
-        }
-
-        .stats span {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 4px 8px;
-            border-radius: 4px;
-        }
-
-        .loading {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(0, 0, 0, 0.8);
-            padding: 20px;
-            border-radius: 10px;
-            color: #4ecdc4;
-            z-index: 2000;
-        }
-
-        .version-switch {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            z-index: 1500;
-        }
-
-        .version-switch button {
-            background: rgba(0, 0, 0, 0.7);
-            color: white;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            padding: 8px 12px;
-            margin: 0 2px;
-            font-size: 12px;
-        }
-
-        .current-mode {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            background: rgba(0, 0, 0, 0.7);
-            color: #4ecdc4;
-            padding: 8px 12px;
-            border-radius: 6px;
-            font-size: 12px;
-            z-index: 1500;
-        }
-
-        /* 반응형 디자인 */
-        @media (max-width: 768px) {
-            .container {
-                flex-direction: column;
-            }
-            
-            .sidebar {
-                width: 100%;
-                height: 45vh;
-                overflow-y: scroll;
-            }
-            
-            .main {
-                height: 55vh;
-            }
-            
-            #map, #canvas {
-                height: 55vh;
-            }
-
-            .version-options {
-                flex-direction: column;
-                gap: 20px;
-            }
-
-            .version-card {
-                width: 100%;
-            }
-        }
+        .history-panel.open { transform: none; }
+        .hheader { display:flex; align-items:center; gap:14px; padding: 56px 22px 18px; border-bottom: 1px solid var(--ui-border); }
+        .hback { background:none; border:none; color: var(--ui-text); font-size:20px; cursor:pointer; padding:6px; }
+        .htitle { font-size: 20px; font-weight: 600; }
+        .hcard { margin: 10px 18px; background: rgba(255,255,255,0.03); border: 1px solid var(--ui-border); border-radius: 14px; padding: 16px 18px; cursor:pointer; transition: background 0.2s; }
+        .hcard:hover { background: rgba(255,255,255,0.06); }
+        .hcard-row { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+        .hcard-dot { width:9px; height:9px; border-radius:50%; }
+        .hcard-name { font-size:14px; font-weight:500; }
+        .hcard-date { font-size:11px; color:var(--ui-muted); margin-left:auto; }
+        .hcard-stats { display:flex; gap:14px; }
+        .hcard-stat { font-size:12px; color:var(--ui-muted); }
+        .hcard-stat b { color:var(--ui-text); font-weight:500; }
+        .hempty { text-align:center; padding:80px 40px; color:var(--ui-muted); font-size:14px; line-height:2; }
     </style>
 </head>
 <body>
-    <!-- 버전 선택 화면 -->
-    <div class="version-selector" id="versionSelector">
-        <div class="selector-content">
-            <h1 class="selector-title">🗺️ 나의 대동여지도</h1>
-            <p class="selector-subtitle">
-                김정호의 대동여지도에서 영감을 받은<br>
-                개인 이동 경로 시각화 시스템
-            </p>
-            
-            <div class="version-options">
-                <div class="version-card" onclick="selectVersion('map')">
-                    <h3>🌍 실제 지도 버전</h3>
-                    <p>OpenStreetMap을 기반으로 한 실제 GPS 위치 추적</p>
-                    <div class="features">
-                        ✅ 실제 지도 위 시각화<br>
-                        ✅ GPS 좌표 정확성<br>
-                        ✅ 줌/팬 기능<br>
-                        ✅ 현재 위치 지원<br>
-                        ⚠️ 인터넷 연결 필요
-                    </div>
-                </div>
-                
-                <div class="version-card" onclick="selectVersion('canvas')">
-                    <h3>🎨 Canvas 버전</h3>
-                    <p>순수 Canvas 기반의 빠른 프로토타입</p>
-                    <div class="features">
-                        ✅ 빠른 로딩<br>
-                        ✅ 오프라인 작동<br>
-                        ✅ 부드러운 애니메이션<br>
-                        ✅ 외부 의존성 없음<br>
-                        ℹ️ 테스트/데모용
-                    </div>
-                </div>
-            </div>
-        </div>
+
+<div class="hamburger" onclick="toggleMenu()">
+    <div class="line"></div><div class="line"></div><div class="line"></div>
+</div>
+<div class="status-pill" id="sPill">
+    <div class="s-dot" id="sDot"></div>
+    <span id="sText">기록 중</span>
+</div>
+
+<canvas id="fog-canvas"></canvas>
+
+<div class="menu-overlay" id="menuOverlay" onclick="if(event.target===this)toggleMenu()">
+    <div class="menu-sheet">
+        <div class="handle" onclick="toggleMenu()"></div>
+        <div class="sheet-section">나의 대동여지도</div>
+
+        <button class="mbtn" onclick="centerMap()">
+            <div class="micon" style="background:rgba(251,191,36,.12);color:#fbbf24">⊙</div>
+            <div class="mlabel"><div class="mname">현 위치로</div><div class="msub">지도를 내 위치로 이동</div></div>
+        </button>
+
+        <div class="mdivider"></div>
+        <div class="sheet-section" style="margin-bottom:8px">기억 기록</div>
+
+        <button class="mbtn" id="btn-blue" onclick="toggleMemory('blue')">
+            <div class="micon" style="background:rgba(96,165,250,.12);color:#60a5fa">●</div>
+            <div class="mlabel"><div class="mname">기억 1</div><div class="msub" id="sub-blue">일상의 경로</div></div>
+            <span class="mbadge" id="badge-blue">시작</span>
+        </button>
+        <button class="mbtn" id="btn-green" onclick="toggleMemory('green')">
+            <div class="micon" style="background:rgba(74,222,128,.12);color:#4ade80">●</div>
+            <div class="mlabel"><div class="mname">기억 2</div><div class="msub" id="sub-green">새로운 발견</div></div>
+            <span class="mbadge" id="badge-green">시작</span>
+        </button>
+        <button class="mbtn" id="btn-fuchsia" onclick="toggleMemory('fuchsia')">
+            <div class="micon" style="background:rgba(232,121,249,.12);color:#e879f9">●</div>
+            <div class="mlabel"><div class="mname">기억 3</div><div class="msub" id="sub-fuchsia">특별한 순간</div></div>
+            <span class="mbadge" id="badge-fuchsia">시작</span>
+        </button>
+
+        <div class="mdivider"></div>
+        <button class="mbtn" onclick="openHistory()">
+            <div class="micon" style="background:rgba(255,255,255,.05);color:var(--ui-muted)">☰</div>
+            <div class="mlabel"><div class="mname">오래된 기억들</div><div class="msub" id="hlabel">저장된 경로 없음</div></div>
+        </button>
     </div>
+</div>
 
-    <!-- 메인 애플리케이션 -->
-    <div class="container" id="mainApp" style="display: none;">
-        <div class="sidebar">
-            <h1>🗺️ 나의 대동여지도</h1>
-            <div style="text-align: center; font-size: 12px; color: #4ecdc4; margin-bottom: 15px;" id="currentMode">
-                <!-- 현재 모드 표시 -->
-            </div>
-            
-            <div class="instruction" id="instructionText">
-                <!-- 모드별 설명 -->
-            </div>
-            
-            <!-- 지도 버전 전용 컨트롤 -->
-            <div class="section" id="mapControls" style="display: none;">
-                <h3>📍 위치 제어</h3>
-                <div class="button-group">
-                    <button onclick="getCurrentLocation()">현재 위치</button>
-                    <button onclick="goToSeoul()">서울시청</button>
-                    <button onclick="goToGangnam()">강남역</button>
-                </div>
-            </div>
-            
-            <div class="section">
-                <h3>⏱️ 시뮬레이션 제어</h3>
-                <div class="button-group">
-                    <button onclick="toggleSimulation()" id="simBtn">시뮬레이션 시작</button>
-                    <button onclick="addRandomRoute()">랜덤 경로 추가</button>
-                    <button onclick="clearAll()">모든 데이터 삭제</button>
-                </div>
-                
-                <div style="margin-top: 10px;">
-                    <strong>시간 가속:</strong>
-                    <div class="button-group" style="margin-top: 5px;">
-                        <button onclick="setSpeed(1)" class="speed active">1x</button>
-                        <button onclick="setSpeed(60)" class="speed">60x</button>
-                        <button onclick="setSpeed(600)" class="speed">600x</button>
-                        <button onclick="setSpeed(3600)" class="speed">3600x</button>
-                    </div>
-                </div>
-            </div>
+<div class="bottom-panel">
+    <div class="stat"><div class="sval" id="sv-total">0<span class="sunit">km</span></div><div class="slabel">오늘 걸은 거리</div></div>
+    <div class="stat"><div class="sval" id="sv-new">0<span class="sunit">km</span></div><div class="slabel">새로운 길</div></div>
+    <div class="stat"><div class="sval" id="sv-pts">0</div><div class="slabel">기록 포인트</div></div>
+</div>
 
-            <div class="section">
-                <h3>📊 현재 상태</h3>
-                <div class="time-display" id="timeDisplay">2024-01-01 12:00:00</div>
-                <div class="stats">
-                    <span>가속: <span id="speedText">1x</span></span>
-                    <span>상태: <span id="status">정지</span></span>
-                </div>
-                <div class="stats">
-                    <span id="routeCount">경로: 0개</span>
-                    <span id="stayCount">체류: 0곳</span>
-                </div>
-                <div class="stats" id="locationStats" style="display: none;">
-                    <span id="currentLocation">위치: 준비중</span>
-                </div>
-            </div>
-
-            <div class="section">
-                <h3>🎨 5단계 기억 시스템</h3>
-                <div class="legend">
-                    <div class="legend-item">
-                        <div class="legend-color" style="background: #FFFFFF; border: 1px solid #666;"></div>
-                        <span>1단계: 흰색 (100%→40%, 10시간)</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-color" style="background: #90EE90;"></div>
-                        <span>→ 연두색 (40%)</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-color" style="background: #32CD32;"></div>
-                        <span>2단계: 초록색 (40%, 14시간)</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-color" style="background: #FFA500;"></div>
-                        <span>3단계: 주황색 (40%, 7일)</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-color" style="background: #FF0000;"></div>
-                        <span>4단계: 빨간색 (40%, 100일)</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-color" style="background: #8B4513;"></div>
-                        <span>5단계: 갈색 (40%, 영구)</span>
-                    </div>
-                    <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.2); font-size: 10px;" id="stayInfo">
-                        <strong>🔵 체류 지점:</strong> 30분=25m → 120분=100m 반경
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="main">
-            <div class="loading" id="loading" style="display: none;">
-                🗺️ 지도 로딩 중...
-            </div>
-
-            <div class="current-mode" id="modeIndicator"></div>
-
-            <div class="version-switch">
-                <button onclick="switchVersion()">다른 버전</button>
-                <button onclick="showVersionSelector()">버전 선택</button>
-            </div>
-
-            <div id="map" style="display: none;"></div>
-            <canvas id="canvas" style="display: none;"></canvas>
-        </div>
+<div class="history-panel" id="historyPanel">
+    <div class="hheader">
+        <button class="hback" onclick="closeHistory()">←</button>
+        <span class="htitle">오래된 기억들</span>
     </div>
+    <div id="historyList"></div>
+</div>
 
-    <script>
-        // 전역 변수
-        let currentVersion = null;
-        let map = null;
-        let canvas = null;
-        let ctx = null;
-        let routes = [];
-        let stayPoints = [];
-        let running = false;
-        let currentTime = new Date('2024-01-01T12:00:00');
-        let speed = 1;
-        let interval;
-        let clickPoint = null;
-        let lastClickTime = null;
-        let mapReady = false;
+<div id="map"></div>
 
-        // 버전 선택
-        function selectVersion(version) {
-            currentVersion = version;
-            document.getElementById('versionSelector').style.display = 'none';
-            document.getElementById('mainApp').style.display = 'flex';
-            
-            if (version === 'map') {
-                initMapVersion();
-            } else {
-                initCanvasVersion();
-            }
-        }
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+// ══════════════════════════════════════════════════════
+//  FOG OF WAR 렌더링 원리
+//  ┌──────────────────────────────────────┐
+//  │  Leaflet 지도 (z:1) — 기본 다크 타일  │
+//  │  + fog-canvas (z:2)                  │
+//  │    → 검정으로 전체 덮기              │
+//  │    → 걸은 경로 주변: destination-out │
+//  │      (구멍을 뚫어 지도가 보이게)     │
+//  │    → 구멍의 투명도 = 시간에 따라     │
+//  │      서서히 채워짐 (기억이 흐려짐)   │
+//  └──────────────────────────────────────┘
+// ══════════════════════════════════════════════════════
 
-        // 지도 버전 초기화
-        function initMapVersion() {
-            document.getElementById('currentMode').textContent = '실제 지도 버전';
-            document.getElementById('modeIndicator').textContent = '🌍 지도 모드';
-            document.getElementById('mapControls').style.display = 'block';
-            document.getElementById('locationStats').style.display = 'flex';
-            document.getElementById('instructionText').innerHTML = `
-                🌍 <strong>실제 지도 기반</strong><br>
-                OpenStreetMap을 사용한 실제 위치 추적 시스템입니다.<br><br>
-                📍 <strong>사용법:</strong><br>
-                • <strong>첫 클릭:</strong> 실제 위치에서 머무르기 시작<br>
-                • <strong>두 번째 클릭:</strong> 다른 위치로 이동<br>
-                • <strong>체류 지점:</strong> 30분+ 머무르면 원형으로 표시<br>
-                • <strong>줌/팬:</strong> 지도 확대/축소 및 이동 가능
-            `;
-            document.getElementById('stayInfo').innerHTML = '<strong>🔵 체류 지점:</strong> 30분=25m → 120분=100m 반경';
-            
-            document.getElementById('map').style.display = 'block';
-            document.getElementById('canvas').style.display = 'none';
-            document.getElementById('loading').style.display = 'block';
-            
-            initMap();
-        }
+const FADE_DURATION_MS = 8 * 60 * 1000;  // 8분에 걸쳐 완전히 어두워짐
+const REVEAL_R  = 38;   // 발걸음 reveal 반경 (px)
+const GLOW_R    = 70;   // 현재 위치 발광 반경 (px)
+const MIN_ALPHA = 0.10; // 완전히 바랜 후 최소 흔적
 
-        // Canvas 버전 초기화
-        function initCanvasVersion() {
-            document.getElementById('currentMode').textContent = 'Canvas 버전';
-            document.getElementById('modeIndicator').textContent = '🎨 Canvas 모드';
-            document.getElementById('mapControls').style.display = 'none';
-            document.getElementById('locationStats').style.display = 'none';
-            document.getElementById('instructionText').innerHTML = `
-                🎨 <strong>Canvas 기반 프로토타입</strong><br>
-                빠른 렌더링과 부드러운 애니메이션을 제공합니다.<br><br>
-                📍 <strong>사용법:</strong><br>
-                • <strong>첫 클릭:</strong> 머무르기 시작 (체류시간 누적)<br>
-                • <strong>두 번째 클릭:</strong> 이동 완료 (경로 생성)<br>
-                • <strong>체류 지점:</strong> 30분+ 머무르면 원형으로 표시<br>
-                • <strong>격자 배경:</strong> 좌표 참조용
-            `;
-            document.getElementById('stayInfo').innerHTML = '<strong>🔵 체류 지점:</strong> 30분=2.5m → 120분=10m 반경';
-            
-            document.getElementById('map').style.display = 'none';
-            document.getElementById('canvas').style.display = 'block';
-            
-            initCanvas();
-        }
+const MEM = {
+    blue:    { color: '#60a5fa', name: '기억 1', trail: [] },
+    green:   { color: '#4ade80', name: '기억 2', trail: [] },
+    fuchsia: { color: '#e879f9', name: '기억 3', trail: [] },
+};
 
-        // 지도 초기화 (Leaflet)
-        function initMap() {
-            try {
-                console.log('지도 초기화 시작...');
-                
-                map = L.map('map').setView([37.5665, 126.9780], 16);
-                
-                const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: '© OpenStreetMap contributors',
-                    maxZoom: 19
-                });
-                
-                tileLayer.addTo(map);
-                
-                map.on('click', function(e) {
-                    if (mapReady) {
-                        handleMapClick(e.latlng);
-                    }
-                });
-                
-                map.whenReady(function() {
-                    console.log('지도 완전 초기화 완료');
-                    mapReady = true;
-                    document.getElementById('loading').style.display = 'none';
-                    updateCurrentLocation();
-                    
-                    setTimeout(() => {
-                        addRandomRoute();
-                        addRandomRoute();
-                        addRandomRoute();
-                    }, 1000);
-                });
-                
-                map.on('moveend', updateCurrentLocation);
-                
-            } catch (error) {
-                console.error('지도 초기화 실패:', error);
-                document.getElementById('loading').innerHTML = '❌ 지도 로딩 실패';
-            }
-        }
+let map, canvas, ctx;
+let allTrail    = [];   // { ll: L.LatLng, t: number, color: string }
+let currentMem  = null;
+let curMarker   = null;
+let lastLL      = null;
+let totalKm     = 0;
+let saved       = JSON.parse(localStorage.getItem('wayou_mem2') || '[]');
 
-        // Canvas 초기화
-        function initCanvas() {
-            canvas = document.getElementById('canvas');
-            ctx = canvas.getContext('2d');
-            
-            resizeCanvas();
-            
-            canvas.addEventListener('click', function(e) {
-                const rect = canvas.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-                handleCanvasClick({x, y});
+// ─── 초기화 ───
+function init() {
+    map = L.map('map', { zoomControl: false, attributionControl: false })
+           .setView([37.5665, 126.9780], 16);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 })
+     .addTo(map);
+
+    canvas = document.getElementById('fog-canvas');
+    ctx    = canvas.getContext('2d');
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+    map.on('move zoom resize', () => {});  // redraw는 rAF에서 처리
+
+    startGPS();
+    updateHLabel();
+    requestAnimationFrame(renderLoop);
+}
+
+function resizeCanvas() {
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+
+// ─── 렌더 루프 ───
+function renderLoop() {
+    drawFog();
+    requestAnimationFrame(renderLoop);
+}
+
+function drawFog() {
+    const W = canvas.width, H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+
+    // 1. 완전 불투명 검정 안개
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = 'rgba(10,10,14,0.97)';
+    ctx.fillRect(0, 0, W, H);
+
+    // 2. 저장된 기억 (희미하게)
+    saved.forEach(mem => {
+        if (!mem.trail) return;
+        mem.trail.forEach(pt => {
+            punchHole(pt.x, pt.y, REVEAL_R * 0.55, MIN_ALPHA + 0.08, mem.color);
+        });
+    });
+
+    // 3. 현재 세션 트레일 (시간 기반 페이드)
+    const now = Date.now();
+    allTrail.forEach(pt => {
+        const px  = map.latLngToContainerPoint(pt.ll);
+        const age = now - pt.t;
+        const ratio = Math.min(age / FADE_DURATION_MS, 1);
+        // ratio 0 → alpha 1.0 (선명), ratio 1 → alpha MIN_ALPHA (희미)
+        const alpha = 1.0 - ratio * (1.0 - MIN_ALPHA);
+        punchHole(px.x, px.y, REVEAL_R, alpha, pt.color);
+    });
+
+    // 4. 현재 위치 발광
+    if (curMarker) {
+        const px = map.latLngToContainerPoint(curMarker.getLatLng());
+        ctx.globalCompositeOperation = 'destination-out';
+        const grad = ctx.createRadialGradient(px.x, px.y, 0, px.x, px.y, GLOW_R);
+        grad.addColorStop(0,   'rgba(0,0,0,0.95)');
+        grad.addColorStop(0.3, 'rgba(0,0,0,0.7)');
+        grad.addColorStop(0.7, 'rgba(0,0,0,0.2)');
+        grad.addColorStop(1,   'rgba(0,0,0,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(px.x, px.y, GLOW_R, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalCompositeOperation = 'source-over';
+    }
+}
+
+// 안개에 구멍 뚫기 (destination-out) + 색조 글로우
+function punchHole(x, y, r, alpha, hexColor) {
+    // 구멍
+    ctx.globalCompositeOperation = 'destination-out';
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0,   `rgba(0,0,0,${alpha})`);
+    g.addColorStop(0.45,`rgba(0,0,0,${alpha * 0.65})`);
+    g.addColorStop(1,   'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 색조 글로우 오버레이 (기억 색상)
+    ctx.globalCompositeOperation = 'source-over';
+    const rgb = hexToRgb(hexColor);
+    const gg = ctx.createRadialGradient(x, y, 0, x, y, r * 0.55);
+    gg.addColorStop(0,  `rgba(${rgb},${alpha * 0.09})`);
+    gg.addColorStop(1,  `rgba(${rgb},0)`);
+    ctx.fillStyle = gg;
+    ctx.beginPath();
+    ctx.arc(x, y, r * 0.55, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+function hexToRgb(hex) {
+    const r = parseInt(hex.slice(1,3),16);
+    const g = parseInt(hex.slice(3,5),16);
+    const b = parseInt(hex.slice(5,7),16);
+    return `${r},${g},${b}`;
+}
+
+// ─── GPS ───
+function startGPS() {
+    if (!navigator.geolocation) { demoWalk(); return; }
+    navigator.geolocation.watchPosition(onPos, () => demoWalk(),
+        { enableHighAccuracy: true, maximumAge: 3000, timeout: 8000 });
+}
+
+function onPos(pos) {
+    const ll  = L.latLng(pos.coords.latitude, pos.coords.longitude);
+    const now = Date.now();
+
+    setMarker(ll);
+
+    if (!lastLL) {
+        map.flyTo(ll, 17, { duration: 1.5 });
+    } else {
+        const d = ll.distanceTo(lastLL) / 1000;
+        if (d < 0.003) return;
+        totalKm += d;
+    }
+
+    lastLL = ll;
+    const color = currentMem ? MEM[currentMem].color : '#e8e6e0';
+    allTrail.push({ ll, t: now, color });
+
+    if (currentMem) MEM[currentMem].trail.push({ ll, t: now });
+
+    updateStats();
+}
+
+function setMarker(ll) {
+    if (!curMarker) {
+        const icon = L.divIcon({
+            className: '',
+            html: `<div style="width:13px;height:13px;background:white;border-radius:50%;
+                   box-shadow:0 0 0 3px rgba(255,255,255,.18),0 0 10px rgba(255,255,255,.35);
+                   border:1.5px solid rgba(0,0,0,.12)"></div>`,
+            iconSize: [13,13], iconAnchor: [6.5,6.5]
+        });
+        curMarker = L.marker(ll, { icon }).addTo(map);
+    } else {
+        curMarker.setLatLng(ll);
+    }
+}
+
+// 데모 (GPS 없을 때)
+function demoWalk() {
+    const route = [
+        [37.5665,126.9780],[37.5669,126.9787],[37.5675,126.9795],
+        [37.5682,126.9803],[37.5689,126.9810],[37.5696,126.9816],
+        [37.5703,126.9821],[37.5710,126.9816],[37.5716,126.9808],
+        [37.5722,126.9800],[37.5727,126.9792],[37.5732,126.9784],
+        [37.5728,126.9775],[37.5722,126.9768],[37.5715,126.9762],
+        [37.5708,126.9758],[37.5701,126.9754],[37.5694,126.9760],
+        [37.5688,126.9767],[37.5682,126.9774],
+    ];
+    map.setView(route[0], 16);
+    let i = 0;
+    const go = () => {
+        if (i >= route.length) return;
+        onPos({ coords: { latitude: route[i][0], longitude: route[i][1], accuracy: 8 } });
+        i++;
+        setTimeout(go, 1600);
+    };
+    go();
+}
+
+// ─── 기억 토글 ───
+function toggleMemory(key) {
+    const mem = MEM[key];
+    const isActive = currentMem === key;
+
+    if (isActive) {
+        // 저장
+        const trail = mem.trail;
+        if (trail.length >= 2) {
+            // 픽셀 좌표도 함께 저장 (저장 시점 기준)
+            const snapTrail = trail.map(pt => {
+                const px = map.latLngToContainerPoint(pt.ll);
+                return { x: px.x, y: px.y, latlng: { lat: pt.ll.lat, lng: pt.ll.lng } };
             });
-            
-            // 초기 테스트 데이터
-            setTimeout(() => {
-                addRandomRoute();
-                addRandomRoute();
-                addRandomRoute();
-            }, 500);
+            saved.unshift({
+                id: Date.now(), key,
+                name: mem.name, color: mem.color,
+                trail: snapTrail,
+                distanceKm: calcDist(trail),
+                date: new Date().toLocaleDateString('ko-KR', { month:'long', day:'numeric', weekday:'short' }),
+                time: new Date().toLocaleTimeString('ko-KR', { hour:'2-digit', minute:'2-digit' }),
+            });
+            localStorage.setItem('wayou_mem2', JSON.stringify(saved));
         }
+        mem.trail = [];
+        currentMem = null;
 
-        // Canvas 크기 조정
-        function resizeCanvas() {
-            if (canvas) {
-                canvas.width = canvas.offsetWidth;
-                canvas.height = canvas.offsetHeight;
-                if (currentVersion === 'canvas') {
-                    drawCanvas();
-                }
-            }
-        }
+        document.getElementById(`btn-${key}`).classList.remove('rec');
+        document.getElementById(`badge-${key}`).textContent = '시작';
+        document.getElementById(`badge-${key}`).style.color = '';
+        document.getElementById(`sub-${key}`).textContent = '저장됨';
+        updateHLabel();
+    } else {
+        if (currentMem) toggleMemory(currentMem);
+        currentMem = key;
+        document.getElementById(`btn-${key}`).classList.add('rec');
+        document.getElementById(`badge-${key}`).textContent = '중지';
+        document.getElementById(`badge-${key}`).style.color = mem.color;
+        document.getElementById(`sub-${key}`).textContent = '기록 중…';
+    }
 
-        // 거리 계산 함수들
-        function getStayRadius(stayMinutes) {
-            if (stayMinutes < 30) return 0;
-            
-            if (currentVersion === 'map') {
-                const baseRadius = 25; // 25m
-                const maxRadius = 100; // 100m
-                const minStay = 30;
-                const maxStay = 120;
-                
-                if (stayMinutes >= maxStay) return maxRadius;
-                const progress = (stayMinutes - minStay) / (maxStay - minStay);
-                return baseRadius + (maxRadius - baseRadius) * progress;
-            } else {
-                const baseRadius = 2.5;
-                const maxRadius = 10;
-                const minStay = 30;
-                const maxStay = 120;
-                
-                if (stayMinutes >= maxStay) return maxRadius;
-                const progress = (stayMinutes - minStay) / (maxStay - minStay);
-                return baseRadius + (maxRadius - baseRadius) * progress;
-            }
-        }
+    const pill = document.getElementById('sPill');
+    const dot  = document.getElementById('sDot');
+    const st   = document.getElementById('sText');
+    if (currentMem) {
+        pill.classList.add('on');
+        dot.style.background = MEM[currentMem].color;
+        st.textContent = MEM[currentMem].name + ' 기록 중';
+    } else {
+        pill.classList.remove('on');
+    }
+    toggleMenu();
+}
 
-        function getDistance(p1, p2) {
-            if (currentVersion === 'map') {
-                return map.distance(p1, p2);
-            } else {
-                const dx = p1.x - p2.x;
-                const dy = p1.y - p2.y;
-                return Math.sqrt(dx * dx + dy * dy);
-            }
-        }
+// ─── 통계 ───
+function updateStats() {
+    const memDist = currentMem ? calcDist(MEM[currentMem].trail) : 0;
+    document.getElementById('sv-total').innerHTML = totalKm.toFixed(2) + '<span class="sunit">km</span>';
+    document.getElementById('sv-new').innerHTML   = memDist.toFixed(2) + '<span class="sunit">km</span>';
+    document.getElementById('sv-pts').textContent = allTrail.length;
+}
 
-        // 경로 상태 계산
-        function getRouteState(ageInMinutes) {
-            if (ageInMinutes < 600) {
-                const opacity = Math.max(0.4, 1.0 - (ageInMinutes / 600) * 0.6);
-                if (opacity <= 0.4) {
-                    return { color: '#90EE90', opacity: 0.4 };
-                }
-                return { color: '#FFFFFF', opacity: opacity };
-            } else if (ageInMinutes < 1440) {
-                return { color: '#32CD32', opacity: 0.4 };
-            } else if (ageInMinutes < 10080) {
-                return { color: '#FFA500', opacity: 0.4 };
-            } else if (ageInMinutes < 144000) {
-                return { color: '#FF0000', opacity: 0.4 };
-            } else {
-                return { color: '#8B4513', opacity: 0.4 };
-            }
-        }
+function calcDist(trail) {
+    let d = 0;
+    for (let i = 1; i < trail.length; i++) d += trail[i].ll.distanceTo(trail[i-1].ll) / 1000;
+    return d;
+}
 
-        // 체류 지점 업데이트
-        function updateStayPoint(point, currentTime, isStaying = true) {
-            const threshold = currentVersion === 'map' ? 50 : 20;
-            
-            for (let stay of stayPoints) {
-                const stayPoint = currentVersion === 'map' ? stay.latlng : stay;
-                if (getDistance(point, stayPoint) < threshold) {
-                    if (isStaying) {
-                        stay.endTime = new Date(currentTime);
-                        const duration = ((stay.endTime - stay.startTime) / 60000).toFixed(1);
-                        console.log(`기존 체류지점 연장: ${duration}분`);
-                        
-                        if (currentVersion === 'map' && stay.circle) {
-                            const newRadius = getStayRadius(duration);
-                            stay.circle.setRadius(newRadius);
-                        }
-                    }
-                    return stay;
-                }
-            }
-            
-            if (isStaying) {
-                const newStay = {
-                    [currentVersion === 'map' ? 'latlng' : 'x']: currentVersion === 'map' ? point : point.x,
-                    [currentVersion === 'map' ? 'y' : 'y']: currentVersion === 'map' ? undefined : point.y,
-                    startTime: new Date(currentTime),
-                    endTime: new Date(currentTime),
-                    created: new Date(currentTime),
-                    circle: null,
-                    marker: null
-                };
-                stayPoints.push(newStay);
-                console.log('새로운 체류지점 생성');
-                return newStay;
-            }
-            
-            return null;
-        }
+// ─── 히스토리 ───
+function openHistory()  { toggleMenu(); setTimeout(() => { document.getElementById('historyPanel').classList.add('open'); renderHistory(); }, 50); }
+function closeHistory() { document.getElementById('historyPanel').classList.remove('open'); }
+function updateHLabel() {
+    document.getElementById('hlabel').textContent = saved.length ? `${saved.length}개의 기억` : '저장된 경로 없음';
+}
+function renderHistory() {
+    const el = document.getElementById('historyList');
+    if (!saved.length) {
+        el.innerHTML = '<div class="hempty">🗺<br><br>아직 저장된 기억이 없어요.</div>';
+        return;
+    }
+    el.innerHTML = saved.map((m,i) => `
+        <div class="hcard" onclick="flyToMem(${i})">
+            <div class="hcard-row">
+                <div class="hcard-dot" style="background:${m.color}"></div>
+                <span class="hcard-name">${m.name}</span>
+                <span class="hcard-date">${m.date} ${m.time}</span>
+            </div>
+            <div class="hcard-stats">
+                <div class="hcard-stat"><b>${m.distanceKm.toFixed(2)}km</b></div>
+                <div class="hcard-stat"><b>${m.trail.length}</b> 포인트</div>
+            </div>
+        </div>`).join('');
+}
+function flyToMem(i) {
+    const m = saved[i];
+    if (!m.trail.length) return;
+    closeHistory();
+    const latlngs = m.trail.map(p => [p.latlng.lat, p.latlng.lng]);
+    const bounds = L.latLngBounds(latlngs);
+    setTimeout(() => map.flyToBounds(bounds, { padding:[80,80], duration:1.5 }), 300);
+}
 
-        // 지도 클릭 처리
-        function handleMapClick(latlng) {
-            if (!clickPoint) {
-                clickPoint = {
-                    latlng: latlng,
-                    marker: L.marker(latlng, {
-                        icon: L.divIcon({
-                            className: 'start-marker',
-                            html: '<div style="background: #ff6b6b; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white;"></div>',
-                            iconSize: [16, 16],
-                            iconAnchor: [8, 8]
-                        })
-                    }).addTo(map)
-                };
-                lastClickTime = new Date(currentTime);
-                console.log('시작점 설정 (머무르기 시작)');
-                updateStayPoint(latlng, currentTime, true);
-            } else {
-                const stayDuration = (currentTime - lastClickTime) / (1000 * 60);
-                console.log(`이전 지점 체류 완료: ${stayDuration.toFixed(1)}분`);
-                
-                const route = {
-                    start: clickPoint.latlng,
-                    end: latlng,
-                    created: new Date(currentTime),
-                    polyline: null
-                };
-                
-                route.polyline = L.polyline([clickPoint.latlng, latlng], {
-                    color: '#FFFFFF',
-                    weight: 4,
-                    opacity: 1.0
-                }).addTo(map);
-                
-                routes.push(route);
-                
-                if (clickPoint.marker) {
-                    map.removeLayer(clickPoint.marker);
-                }
-                
-                updateStayPoint(latlng, currentTime, false);
-                
-                clickPoint = null;
-                lastClickTime = null;
-                console.log('경로 생성 완료 (이동함)');
-                updateCount();
-            }
-        }
+// ─── 유틸 ───
+function toggleMenu()  { document.getElementById('menuOverlay').classList.toggle('open'); }
+function centerMap()   {
+    if (lastLL) map.flyTo(lastLL, 17, { duration: 1.2 });
+    else navigator.geolocation?.getCurrentPosition(p => map.flyTo([p.coords.latitude, p.coords.longitude], 17));
+    toggleMenu();
+}
 
-        // Canvas 클릭 처리
-        function handleCanvasClick(point) {
-            if (!clickPoint) {
-                clickPoint = point;
-                lastClickTime = new Date(currentTime);
-                console.log('시작점 설정 (머무르기 시작)');
-                updateStayPoint(point, currentTime, true);
-            } else {
-                const stayDuration = (currentTime - lastClickTime) / (1000 * 60);
-                console.log(`이전 지점 체류 완료: ${stayDuration.toFixed(1)}분`);
-                
-                const route = {
-                    start: clickPoint,
-                    end: point,
-                    created: new Date(currentTime)
-                };
-                routes.push(route);
-                
-                updateStayPoint(point, currentTime, false);
-                
-                <!DOCTYPE html>
-<html lang="ko">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>나의 대동여지도 - 통합 버전
+window.onload = init;
+</script>
+</body>
+</html>
+
