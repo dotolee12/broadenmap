@@ -1,193 +1,401 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>나의 대동여지도</title>
-
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-
 <style>
-html,body { margin:0; height:100%; overflow:hidden; background:#0d0d18; }
-#map { position:absolute; inset:0; }
-#fog-canvas { position:absolute; inset:0; pointer-events:none; }
+* { box-sizing:border-box; margin:0; padding:0; }
+html,body { width:100%; height:100%; overflow:hidden; background:#0d0d18; font-family:'Apple SD Gothic Neo','Noto Sans KR',sans-serif; }
+#map { position:absolute; inset:0; z-index:1; }
+#fog-canvas { position:absolute; inset:0; z-index:400; pointer-events:none; }
 
-#rec {
-  position:absolute; top:20px; left:20px;
-  padding:10px 14px; border-radius:20px;
-  background:rgba(255,255,255,0.1); color:#fff;
-  cursor:pointer; z-index:1000;
+#hud-top {
+  position:absolute; top:0; left:0; right:0; height:56px;
+  background:rgba(8,8,18,0.9); backdrop-filter:blur(12px);
+  border-bottom:0.5px solid rgba(255,255,255,0.07);
+  display:flex; align-items:center; justify-content:space-between;
+  padding:0 18px; z-index:1000;
 }
+#ham-btn { width:40px;height:40px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;background:none;border:none;cursor:pointer; }
+.hline { width:20px;height:1.5px;background:rgba(255,255,255,0.75);border-radius:2px; }
+#app-title { font-size:14px;font-weight:500;color:rgba(255,255,255,0.75);letter-spacing:0.5px; }
+
+#rec-pill { display:flex;align-items:center;gap:5px;border-radius:20px;padding:5px 11px;font-size:10px;font-weight:500;cursor:pointer;transition:all 0.3s;border:0.5px solid; }
+#rec-pill.recording { background:rgba(220,50,50,0.15);border-color:rgba(220,50,50,0.35);color:rgba(220,80,80,0.95); }
+#rec-pill.idle      { background:rgba(240,192,64,0.12);border-color:rgba(240,192,64,0.3);color:rgba(240,192,64,0.9); }
+#rec-dot { width:7px;height:7px;border-radius:50%; }
+#rec-pill.recording #rec-dot { background:#e03232;animation:blink 1s infinite; }
+#rec-pill.idle #rec-dot      { background:#f0c040; }
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.2}}
+
+#hud-bottom {
+  position:absolute; bottom:0; left:0; right:0; height:76px;
+  background:rgba(8,8,18,0.92); backdrop-filter:blur(12px);
+  border-top:0.5px solid rgba(255,255,255,0.07);
+  display:flex; align-items:center; padding:0 24px; z-index:1000;
+}
+.stat-item { flex:1;display:flex;flex-direction:column;gap:3px; }
+.stat-item+.stat-item { border-left:0.5px solid rgba(255,255,255,0.08);padding-left:20px; }
+.stat-label { font-size:9px;color:rgba(255,255,255,0.32);letter-spacing:0.5px; }
+.stat-value { font-size:16px;font-weight:500;color:rgba(255,255,255,0.85); }
+.stat-value span { font-size:11px;color:rgba(255,255,255,0.35);margin-left:2px; }
+
+#gps-toast {
+  position:absolute; top:68px; left:50%; transform:translateX(-50%);
+  background:rgba(14,14,28,0.95); border:0.5px solid rgba(255,255,255,0.1);
+  border-radius:20px; padding:8px 16px; font-size:11px; color:rgba(255,255,255,0.6);
+  z-index:1000; white-space:nowrap; transition:opacity 0.4s;
+}
+#gps-toast.hidden { opacity:0; pointer-events:none; }
+
+#layer-toggle { position:absolute;bottom:88px;right:14px;z-index:1000;display:flex;flex-direction:column;gap:6px; }
+.layer-btn { width:40px;height:40px;background:rgba(10,10,22,0.9);border:0.5px solid rgba(255,255,255,0.12);border-radius:10px;color:rgba(255,255,255,0.6);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center; }
+.layer-btn.active { background:rgba(240,192,64,0.15);border-color:rgba(240,192,64,0.35);color:#f0c040; }
+
+#panel { position:absolute;top:0;left:0;bottom:0;width:290px;background:rgba(10,10,20,0.97);backdrop-filter:blur(20px);z-index:2000;transform:translateX(-100%);transition:transform 0.35s cubic-bezier(0.4,0,0.2,1);display:flex;flex-direction:column;border-right:0.5px solid rgba(255,255,255,0.06); }
+#panel.open { transform:translateX(0); }
+.panel-header { padding:64px 22px 20px;border-bottom:0.5px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:space-between; }
+.panel-title { font-size:20px;font-weight:500;color:rgba(255,255,255,0.88); }
+#panel-close { width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,0.07);border:none;color:rgba(255,255,255,0.5);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center; }
+.section-label { font-size:10px;font-weight:500;color:rgba(255,255,255,0.28);letter-spacing:1px;padding:18px 22px 8px; }
+.cur-pos-btn { margin:0 14px 4px;background:rgba(240,192,64,0.1);border:0.5px solid rgba(240,192,64,0.25);border-radius:12px;padding:13px 16px;display:flex;align-items:center;gap:11px;cursor:pointer; }
+.cur-dot { width:10px;height:10px;border-radius:50%;background:#f0c040;box-shadow:0 0 0 3px rgba(240,192,64,0.2);flex-shrink:0; }
+.cur-label { font-size:14px;font-weight:500;color:#f0c040; }
+#memories-list { flex:1;overflow-y:auto;padding:0 14px;display:flex;flex-direction:column;gap:5px; }
+#memories-list::-webkit-scrollbar { display:none; }
+.mem-btn { border:none;border-radius:12px;padding:13px 16px;display:flex;align-items:center;gap:11px;cursor:pointer;width:100%;text-align:left; }
+.mem-dot { width:10px;height:10px;border-radius:50%;flex-shrink:0; }
+.mem-info { flex:1; }
+.mem-name { font-size:13px;font-weight:500;color:rgba(255,255,255,0.88); }
+.mem-meta { font-size:10px;color:rgba(255,255,255,0.38);margin-top:2px; }
+.mem-km   { font-size:11px;color:rgba(255,255,255,0.4);font-weight:500; }
+
+.player-marker { width:20px;height:20px;border-radius:50%;background:rgba(240,192,64,0.25);display:flex;align-items:center;justify-content:center;animation:pm 2s infinite; }
+@keyframes pm{0%,100%{transform:scale(1)}50%{transform:scale(1.5);opacity:0.6}}
+.player-inner { width:10px;height:10px;border-radius:50%;background:#f0c040; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#0d0d18; font-family:'Apple SD Gothic Neo','Noto Sans KR',sans-serif; }
+  #map { position:absolute; inset:0; z-index:1; }
+  #fog-canvas { position:absolute; inset:0; z-index:400; pointer-events:none; width: 100%; height: 100%; }
+
+  /* HUD Styles */
+  #hud-top {
+    position:absolute; top:0; left:0; right:0; height:56px;
+    background:rgba(8,8,18,0.9); backdrop-filter:blur(12px);
+    border-bottom:0.5px solid rgba(255,255,255,0.07);
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 18px; z-index:1000;
+  }
+  #ham-btn { width:40px;height:40px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;background:none;border:none;cursor:pointer; }
+  .hline { width:20px;height:1.5px;background:rgba(255,255,255,0.75);border-radius:2px; }
+  #app-title { font-size:14px;font-weight:500;color:rgba(255,255,255,0.75);letter-spacing:0.5px; }
+
+  #rec-pill { display:flex;align-items:center;gap:5px;border-radius:20px;padding:5px 11px;font-size:10px;font-weight:500;cursor:pointer;transition:all 0.3s;border:0.5px solid; }
+  #rec-pill.recording { background:rgba(220,50,50,0.15);border-color:rgba(220,50,50,0.35);color:rgba(220,80,80,0.95); }
+  #rec-pill.idle      { background:rgba(240,192,64,0.12);border-color:rgba(240,192,64,0.3);color:rgba(240,192,64,0.9); }
+  #rec-dot { width:7px;height:7px;border-radius:50%; }
+  #rec-pill.recording #rec-dot { background:#e03232;animation:blink 1s infinite; }
+  #rec-pill.idle #rec-dot      { background:#f0c040; }
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:0.2}}
+
+  #hud-bottom {
+    position:absolute; bottom:0; left:0; right:0; height:76px;
+    background:rgba(8,8,18,0.92); backdrop-filter:blur(12px);
+    border-top:0.5px solid rgba(255,255,255,0.07);
+    display:flex; align-items:center; padding:0 24px; z-index:1000;
+  }
+  .stat-item { flex:1;display:flex;flex-direction:column;gap:3px; }
+  .stat-item+.stat-item { border-left:0.5px solid rgba(255,255,255,0.08);padding-left:20px; }
+  .stat-label { font-size:9px;color:rgba(255,255,255,0.32);letter-spacing:0.5px; }
+  .stat-value { font-size:16px;font-weight:500;color:rgba(255,255,255,0.85); }
+  .stat-value span { font-size:11px;color:rgba(255,255,255,0.35);margin-left:2px; }
+
+  #gps-toast {
+    position:absolute; top:68px; left:50%; transform:translateX(-50%);
+    background:rgba(14,14,28,0.95); border:0.5px solid rgba(255,255,255,0.1);
+    border-radius:20px; padding:8px 16px; font-size:11px; color:rgba(255,255,255,0.6);
+    z-index:1000; white-space:nowrap; transition:opacity 0.4s;
+  }
+  #gps-toast.hidden { opacity:0; pointer-events:none; }
+
+  #layer-toggle { position:absolute;bottom:88px;right:14px;z-index:1000;display:flex;flex-direction:column;gap:6px; }
+  .layer-btn { width:40px;height:40px;background:rgba(10,10,22,0.9);border:0.5px solid rgba(255,255,255,0.12);border-radius:10px;color:rgba(255,255,255,0.6);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center; }
+  .layer-btn.active { background:rgba(240,192,64,0.15);border-color:rgba(240,192,64,0.35);color:#f0c040; }
+
+  #panel { position:absolute;top:0;left:0;bottom:0;width:290px;background:rgba(10,10,20,0.97);backdrop-filter:blur(20px);z-index:2000;transform:translateX(-100%);transition:transform 0.35s cubic-bezier(0.4,0,0.2,1);display:flex;flex-direction:column;border-right:0.5px solid rgba(255,255,255,0.06); }
+  #panel.open { transform:translateX(0); }
+  .panel-header { padding:64px 22px 20px;border-bottom:0.5px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:space-between; }
+  .panel-title { font-size:20px;font-weight:500;color:rgba(255,255,255,0.88); }
+  #panel-close { width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,0.07);border:none;color:rgba(255,255,255,0.5);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center; }
+  .section-label { font-size:10px;font-weight:500;color:rgba(255,255,255,0.28);letter-spacing:1px;padding:18px 22px 8px; }
+  .cur-pos-btn { margin:0 14px 4px;background:rgba(240,192,64,0.1);border:0.5px solid rgba(240,192,64,0.25);border-radius:12px;padding:13px 16px;display:flex;align-items:center;gap:11px;cursor:pointer; }
+  .cur-dot { width:10px;height:10px;border-radius:50%;background:#f0c040;box-shadow:0 0 0 3px rgba(240,192,64,0.2);flex-shrink:0; }
+  .cur-label { font-size:14px;font-weight:500;color:#f0c040; }
+  #memories-list { flex:1;overflow-y:auto;padding:0 14px;display:flex;flex-direction:column;gap:5px; }
+  #memories-list::-webkit-scrollbar { display:none; }
+  .mem-btn { border:none;border-radius:12px;padding:13px 16px;display:flex;align-items:center;gap:11px;cursor:pointer;width:100%;text-align:left; }
+  .mem-dot { width:10px;height:10px;border-radius:50%;flex-shrink:0; }
+  .mem-info { flex:1; }
+  .mem-name { font-size:13px;font-weight:500;color:rgba(255,255,255,0.88); }
+  .mem-meta { font-size:10px;color:rgba(255,255,255,0.38);margin-top:2px; }
+  .mem-km   { font-size:11px;color:rgba(255,255,255,0.4);font-weight:500; }
+
+  .player-marker { width:20px;height:20px;border-radius:50%;background:rgba(240,192,64,0.25);display:flex;align-items:center;justify-content:center;animation:pm 2s infinite; }
+  @keyframes pm{0%,100%{transform:scale(1)}50%{transform:scale(1.5);opacity:0.6}}
+  .player-inner { width:10px;height:10px;border-radius:50%;background:#f0c040; }
 </style>
 </head>
-
 <body>
-
-<div id="map"></div>
-<canvas id="fog-canvas"></canvas>
-<div id="rec" onclick="toggleRecord()">기록중</div>
+@@ -131,54 +132,74 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
 <script>
-// ================== 지도 ==================
-const map = L.map('map').setView([37.5340,126.9950],17);
-
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
-  maxZoom:19
+// --- 지도 초기화 ---
+const map = L.map('map', { zoomControl:false, attributionControl:false });
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  maxZoom:19, subdomains:'abcd'
 }).addTo(map);
+map.setView([37.5340, 126.9950], 17);
 
-// ================== 안개 ==================
+const fog  = document.getElementById('fog-canvas');
+// --- 안개 캔버스 설정 (고해상도 대응) ---
 const fog = document.getElementById('fog-canvas');
 const fctx = fog.getContext('2d');
+let fogEnabled = true;
 
-function resizeFog(){
+function resizeFog() {
+  fog.width  = window.innerWidth;
+  fog.height = window.innerHeight;
   const dpr = window.devicePixelRatio || 1;
   fog.width = window.innerWidth * dpr;
   fog.height = window.innerHeight * dpr;
-  fctx.setTransform(dpr,0,0,dpr,0,0);
+  fctx.setTransform(dpr, 0, 0, dpr, 0, 0); // 스케일 조정
   redrawFog();
 }
 
 window.addEventListener('resize', resizeFog);
+map.on('move zoom moveend zoomend', redrawFog);
 
-// 🔥 핵심: 원으로 안개 제거
-function eraseFogCircle(latlng, radius=70, alpha=1){
-  const p = map.latLngToContainerPoint(latlng);
-
-  fctx.save();
-  fctx.globalCompositeOperation = 'destination-out';
-  fctx.globalAlpha = alpha;
-
-  const g = fctx.createRadialGradient(
-    p.x, p.y, 0,
-    p.x, p.y, radius
-  );
-
-  g.addColorStop(0, 'rgba(0,0,0,1)');
-  g.addColorStop(1, 'rgba(0,0,0,0)');
-
-  fctx.fillStyle = g;
-  fctx.beginPath();
-  fctx.arc(p.x, p.y, radius, 0, Math.PI*2);
-  fctx.fill();
-
-  fctx.restore();
-}
-
-// 전체 다시 그림
-function redrawFog(){
+function redrawFog() {
+  const W = fog.width, H = fog.height;
+  fctx.clearRect(0, 0, W, H);
   const W = window.innerWidth;
   const H = window.innerHeight;
-  const dpr = window.devicePixelRatio || 1;
-
-  fctx.clearRect(0,0,fog.width,fog.height);
-
+  
   fctx.save();
-  fctx.setTransform(dpr,0,0,dpr,0,0);
+  fctx.setTransform(1, 0, 0, 1, 0, 0);
+  fctx.clearRect(0, 0, fog.width, fog.height);
+  fctx.restore();
 
-  // 전체 어둠
-  fctx.fillStyle = 'rgba(8,10,22,0.92)';
-  fctx.fillRect(0,0,W,H);
+  if (!fogEnabled) return;
 
-  // 🔥 지나간 길 밝히기
-  todayLatlngs.forEach(ll=>{
-    eraseFogCircle(ll, 80, 1);
-  });
+  // 전체 안개
+  fctx.fillStyle = 'rgba(8,10,22,0.88)';
+  // 1. 전체 안개 채우기
+  fctx.fillStyle = 'rgba(8,10,22,0.92)'; 
+  fctx.fillRect(0, 0, W, H);
 
-  memories.forEach(mem=>{
-    mem.latlngs.forEach(ll=>{
-      eraseFogCircle(ll, 60, 0.5);
-    });
-  });
+  // destination-out으로 경로 위만 뚫기
+  // 2. 안개 뚫기 설정
+  fctx.save();
+  fctx.globalCompositeOperation = 'destination-out';
+  fctx.lineCap  = 'round';
+  fctx.lineJoin = 'round';
+
+  memories.slice(5).forEach(m  => eraseAlongPath(m.latlngs, 0.28, 28));
+  memories.slice(0,5).forEach(m => eraseAlongPath(m.latlngs, 0.50, 30));
+  if (todayLatlngs.length > 1)  eraseAlongPath(todayLatlngs, 1.0, 34);
+  // 저장된 기억들 뚫기 (불투명도 조절)
+  if (memories.length > 5) {
+    memories.slice(5).forEach(m => eraseAlongPath(m.latlngs, 0.4, 28));
+  }
+  memories.slice(0, 5).forEach(m => eraseAlongPath(m.latlngs, 0.7, 30));
+
+  // 오늘 걸은 길 (1.0으로 완전히 뚫기)
+  if (todayLatlngs.length > 1) {
+    eraseAlongPath(todayLatlngs, 1.0, 36);
+  }
 
   fctx.restore();
 }
 
-map.on('move zoom', redrawFog);
-
-// ================== 상태 ==================
-let recording = true;
-let currentLatLng = null;
-let todayLatlngs = [];
-let memories = [];
-
-// ================== 거리 계산 ==================
-function dist(a,b){
-  const R=6371000;
-  const dLat=(b.lat-a.lat)*Math.PI/180;
-  const dLng=(b.lng-a.lng)*Math.PI/180;
-  const x=Math.sin(dLat/2)**2 +
-          Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*
-          Math.sin(dLng/2)**2;
-  return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+function eraseAlongPath(latlngs, alpha, strokeWidth) {
+  if (latlngs.length < 2) return;
+  if (!latlngs || latlngs.length < 2) return;
+  
+  fctx.globalAlpha = alpha;
+  fctx.strokeStyle = 'rgba(0,0,0,1)';
+  fctx.lineWidth   = strokeWidth;
+  fctx.lineWidth = strokeWidth;
+  fctx.beginPath();
+  
+  const p0 = map.latLngToContainerPoint(latlngs[0]);
+  fctx.moveTo(p0.x, p0.y);
+  
+  for (let i = 1; i < latlngs.length; i++) {
+    const p = map.latLngToContainerPoint(latlngs[i]);
+    fctx.lineTo(p.x, p.y);
+@@ -187,7 +208,8 @@
+  fctx.globalAlpha = 1;
 }
 
-// ================== 위치 처리 ==================
-function handlePos(ll){
+let recording     = true;
+// --- 상태 변수 ---
+let recording      = true;
+let currentLatLng = null;
+let playerMarker  = null;
+let accCircle     = null;
+@@ -197,6 +219,7 @@
+let newDist       = 0;
+const COLORS = ['#6b9ef5','#52c4a0','#c478e0','#e06b8d','#e8a44a','#4dc8e8'];
 
-  if(!currentLatLng){
-    map.setView(ll,17);
-    todayLatlngs.push(ll);
-    currentLatLng = ll;
-    return;
-  }
-
-  const d = dist(currentLatLng, ll);
-
-  if(recording && d > 1){
-    todayLatlngs.push(ll);
-    redrawFog();
-  }
-
+// --- 마커 및 위치 처리 ---
+function setPlayerMarker(ll) {
+  if (!playerMarker) {
+    const el = document.createElement('div');
+@@ -219,12 +242,14 @@
+function handlePosition(ll) {
+  if (!currentLatLng) map.setView(ll, 17);
+  setPlayerMarker(ll);
+  
+  if (recording) {
+    if (currentLatLng) {
+      const d = haversine(currentLatLng, ll);
+      // 최소 2m 이상 이동 시에만 데이터 저장 (GPS 노이즈 방지)
+      if (d > 2) {
+        totalDist += d;
+        newDist   += d * 0.65;
+        newDist   += d * 0.7; // 시뮬레이션용 새로운 길 가중치
+        todayLatlngs.push(ll);
+        updateStats();
+        redrawFog();
+@@ -236,68 +261,77 @@
   currentLatLng = ll;
 }
 
-// ================== GPS ==================
-function startGPS(){
-  if(!navigator.geolocation){
-    startSim(); return;
+// --- GPS 제어 ---
+function startGPS() {
+  if (!navigator.geolocation) { startSim(); return; }
+  showToast('📡 GPS 신호 찾는 중...');
+  
+  navigator.geolocation.watchPosition(
+    pos => {
+      hideToast();
+      const ll = L.latLng(pos.coords.latitude, pos.coords.longitude);
+      
+      // 정확도 원 표시
+      if (accCircle) accCircle.setLatLng(ll).setRadius(pos.coords.accuracy);
+      else accCircle = L.circle(ll, {
+        radius:pos.coords.accuracy,
+        color:'rgba(240,192,64,0.4)', fillColor:'rgba(240,192,64,0.06)',
+        fillOpacity:1, weight:1
+      }).addTo(map);
+      
+      handlePosition(ll);
+    },
+    () => { showToast('⚠️ GPS 사용 불가 → 시뮬레이션 모드'); setTimeout(startSim, 1200); },
+    { enableHighAccuracy:true, maximumAge:3000, timeout:15000 }
+    () => { 
+      showToast('⚠️ GPS 사용 불가 → 시뮬레이션 모드'); 
+      setTimeout(startSim, 1500); 
+    },
+    { enableHighAccuracy:true, maximumAge:2000, timeout:10000 }
+  );
+}
+
+// --- 시뮬레이션 (GPS 미지원 대비) ---
+function startSim() {
+  hideToast();
+  showToast('🚶 시뮬레이션 모드 (실제 폰에서는 GPS 자동 사용)');
+  setTimeout(hideToast, 3500);
+  showToast('🚶 시뮬레이션 모드 활성');
+  setTimeout(hideToast, 3000);
+
+  let lat = 37.5340, lng = 126.9950;
+  const route = [
+    [37.53400,126.99500],[37.53410,126.99512],[37.53422,126.99530],
+    [37.53435,126.99518],[37.53448,126.99505],[37.53460,126.99520],
+    [37.53472,126.99538],[37.53480,126.99555],[37.53488,126.99540],
+    [37.53495,126.99522],[37.53505,126.99510],[37.53515,126.99525],
+    [37.53525,126.99542],[37.53535,126.99558],[37.53542,126.99545],
+    [37.53550,126.99530],[37.53560,126.99515],[37.53572,126.99528],
+    [37.53582,126.99545],[37.53590,126.99562],[37.53598,126.99548],
+    [37.53606,126.99532],[37.53616,126.99518],[37.53628,126.99530],
+    [37.53638,126.99548],[37.53645,126.99565],[37.53652,126.99550],
+    [37.53660,126.99535],[37.53670,126.99520],[37.53682,126.99533],
+    [0.0001, 0.0001], [0.00012, 0.00008], [0.00008, 0.00015], [0.00015, -0.00005],
+    [0.0001, 0.0001], [0.00005, 0.0002], [0.00012, 0.0001], [0.0001, -0.0001]
+  ];
+
+  let i = 0;
+  function step() {
+    if (!recording) { setTimeout(step, 800); return; }
+    if (i < route.length) {
+      handlePosition(L.latLng(route[i][0], route[i][1]));
+      i++;
+      setTimeout(step, 500);
+    } else {
+      if (todayLatlngs.length > 3) { saveMemory(); todayLatlngs = []; }
+      i = 0; currentLatLng = null;
+      setTimeout(step, 1200);
+    if (!recording) { setTimeout(step, 1000); return; }
+    
+    lat += route[i % route.length][0];
+    lng += route[i % route.length][1];
+    handlePosition(L.latLng(lat, lng));
+    
+    i++;
+    if (i % 20 === 0) { // 일정량 이동 시 기억 저장 자동화 시뮬레이션
+        saveMemory();
+        todayLatlngs = [currentLatLng];
+    }
+    setTimeout(step, 800);
   }
-
-  navigator.geolocation.watchPosition(pos=>{
-    const ll = L.latLng(pos.coords.latitude,pos.coords.longitude);
-    handlePos(ll);
-  },
-  ()=>startSim(),
-  { enableHighAccuracy:true });
+  step();
 }
 
-// ================== 시뮬 ==================
-function startSim(){
-  let lat=37.5340, lng=126.9950;
-
-  setInterval(()=>{
-    lat += (Math.random()-0.5)*0.0002;
-    lng += (Math.random()-0.5)*0.0002;
-
-    handlePos(L.latLng(lat,lng));
-  },800);
-}
-
-// ================== 기록 ==================
-function toggleRecord(){
+// --- UI 및 저장 로직 ---
+function toggleRecord() {
   recording = !recording;
-  document.getElementById('rec').textContent =
-    recording ? "기록중" : "정지";
-
-  if(!recording && todayLatlngs.length > 10){
-    memories.push({
-      latlngs:[...todayLatlngs]
-    });
-    todayLatlngs = [];
+  document.getElementById('rec-label').textContent = recording ? '기록 중' : '기록 시작';
+  document.getElementById('rec-pill').className    = recording ? 'recording' : 'idle';
+  if (!recording && todayLatlngs.length > 2) { saveMemory(); todayLatlngs = []; }
+  if (!recording && todayLatlngs.length > 2) { 
+    saveMemory(); 
+    todayLatlngs = []; 
   }
 }
 
-// ================== 시작 ==================
+function saveMemory() {
+  if (todayLatlngs.length < 2) return;
+  const now = new Date();
+  memories.unshift({
+    color:   COLORS[memories.length % COLORS.length],
+@@ -313,11 +347,11 @@
+function renderMemories() {
+  const list = document.getElementById('memories-list');
+  list.innerHTML = '';
+  memories.slice(0,5).forEach(mem => {
+  memories.slice(0,10).forEach(mem => {
+    const d = document.createElement('div');
+    d.className = 'mem-btn';
+    d.style.background = hexA(mem.color, .13);
+    d.style.border     = '0.5px solid ' + hexA(mem.color, .28);
+    d.style.border      = '0.5px solid ' + hexA(mem.color, .28);
+    d.innerHTML = `
+      <div class="mem-dot" style="background:${mem.color};box-shadow:0 0 0 3px ${hexA(mem.color,.2)}"></div>
+      <div class="mem-info">
+@@ -341,7 +375,7 @@
+function updateStats() {
+  document.getElementById('stat-total').innerHTML = (totalDist/1000).toFixed(2)+'<span>km</span>';
+  document.getElementById('stat-new').innerHTML   = (newDist/1000).toFixed(2)  +'<span>km</span>';
+  document.getElementById('stat-count').innerHTML = memories.length             +'<span>개</span>';
+  document.getElementById('stat-count').innerHTML = memories.length              +'<span>개</span>';
+}
+
+function togglePanel() { document.getElementById('panel').classList.toggle('open'); }
+@@ -363,6 +397,7 @@
+  toastTimer = setTimeout(() => document.getElementById('gps-toast').classList.add('hidden'), 300);
+}
+
+// 초기 로드
 resizeFog();
 startGPS();
-
 </script>
-
-</body>
-</html>
