@@ -3,177 +3,60 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>나의 대동여지도</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<style>
-  * { box-sizing:border-box; margin:0; padding:0; }
-  html,body { width:100%; height:100%; overflow:hidden; background:#080812; font-family:'Apple SD Gothic Neo','Noto Sans KR',sans-serif; }
-  #map { position:absolute; inset:0; z-index:1; }
-  #fog-canvas { position:absolute; inset:0; z-index:400; pointer-events:none; }
-
-  /* HUD */
-  #hud-top {
-    position:absolute; top:0; left:0; right:0; height:56px;
-    background:rgba(8,8,18,0.85); backdrop-filter:blur(10px);
-    border-bottom:0.5px solid rgba(255,255,255,0.08);
-    display:flex; align-items:center; justify-content:space-between;
-    padding:0 18px; z-index:1000;
-  }
-  #app-title { font-size:14px; font-weight:500; color:rgba(255,255,255,0.8); letter-spacing:0.5px; }
-  #rec-pill { display:flex; align-items:center; gap:6px; border-radius:20px; padding:6px 12px; font-size:11px; font-weight:600; cursor:pointer; border:0.5px solid; }
-  #rec-pill.recording { background:rgba(224,50,50,0.15); border-color:rgba(224,50,50,0.4); color:#ff5555; }
-  #rec-dot { width:7px; height:7px; border-radius:50%; background:#ff5555; animation:blink 1s infinite; }
-  @keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
-
-  #hud-bottom {
-    position:absolute; bottom:0; left:0; right:0; height:80px;
-    background:rgba(8,8,18,0.9); backdrop-filter:blur(10px);
-    border-top:0.5px solid rgba(255,255,255,0.08);
-    display:flex; align-items:center; padding:0 24px; z-index:1000;
-  }
-  .stat-item { flex:1; display:flex; flex-direction:column; gap:4px; }
-  .stat-label { font-size:10px; color:rgba(255,255,255,0.4); }
-  .stat-value { font-size:18px; font-weight:600; color:#f0c040; }
-  .stat-value span { font-size:12px; color:rgba(255,255,255,0.3); margin-left:2px; }
-
-  #gps-toast {
-    position:absolute; top:70px; left:50%; transform:translateX(-50%);
-    background:rgba(20,20,35,0.9); border:0.5px solid rgba(255,255,255,0.1);
-    border-radius:20px; padding:8px 16px; font-size:11px; color:#fff; z-index:1000;
-  }
-</style>
+<title>New Daedongyeojido - Project Giloa</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="./style.css">
 </head>
 <body>
 
-<div id="map"></div>
-<canvas id="fog-canvas"></canvas>
+<div id="sidebar">
+    <div class="sidebar-header">
+        <h2>나의 기록들</h2>
+        <span onclick="toggleSidebar(false)" class="close-btn">✕</span>
+    </div>
+    <div id="memory-list-container">
+        <p class="empty-message">아직 기록이 없습니다.</p>
+    </div>
+</div>
+<div id="sidebar-overlay" onclick="toggleSidebar(false)"></div>
 
-<div id="hud-top">
-  <span id="app-title">나의 대동여지도</span>
-  <div id="rec-pill" class="recording">
-    <div id="rec-dot"></div>
-    <span id="rec-label">탐험 중</span>
-  </div>
+<div id="map-wrap"><div id="map"></div></div>
+<canvas id="fog-canvas"></canvas>
+<canvas id="age-canvas"></canvas>
+<canvas id="stay-canvas"></canvas>
+
+<div id="top-bar">
+    <div id="ham-btn" onclick="toggleSidebar()">
+        <div class="hline"></div>
+        <div class="hline"></div>
+        <div class="hline"></div>
+    </div>
+    <div id="rec-status-box">대기 중</div>
 </div>
 
-<div id="gps-toast">🛰️ 위치 신호를 수신하고 있습니다...</div>
+<div id="controls">
+    <div id="rec-btn" class="btn" onclick="toggleRecording()">
+        <div class="icon-rec"></div>
+        <div class="icon-stop"></div>
+    </div>
+    <div id="memo-btn" class="btn" onclick="addMemory()">★</div>
+    <div id="loc-btn" class="btn" onclick="centerMap()">
+        <div class="icon-loc"></div>
+    </div>
+</div>
 
-<div id="hud-bottom">
-  <div class="stat-item">
-    <span class="stat-label">총 탐험 거리</span>
-    <span class="stat-value" id="stat-total">0.00<span>km</span></span>
-  </div>
-  <div class="stat-item">
-    <span class="stat-label">오늘 발견한 길</span>
-    <span class="stat-value" id="stat-new">0.00<span>km</span></span>
-  </div>
+<div id="hud">
+    <div class="stat">
+        <div class="label">TOTAL DISTANCE</div>
+        <div id="dist-val" class="value">0.00<span>km</span></div>
+    </div>
+    <div class="stat">
+        <div class="label">MEMORIES</div>
+        <div id="memo-val" class="value">0</div>
+    </div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script>
-// 1. 지도 설정
-const map = L.map('map', { zoomControl:false, attributionControl:false });
-// 최대한 어두운 타일셋 사용
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-  maxZoom:19, subdomains:'abcd'
-}).addTo(map);
-
-// 2. 안개 캔버스 (초기 화면부터 음영 적용)
-const fog = document.getElementById('fog-canvas');
-const fctx = fog.getContext('2d');
-
-function resizeFog() {
-  const dpr = window.devicePixelRatio || 1;
-  fog.width = window.innerWidth * dpr;
-  fog.height = window.innerHeight * dpr;
-  fctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  redrawFog();
-}
-window.addEventListener('resize', resizeFog);
-map.on('move zoom moveend zoomend', redrawFog);
-
-function redrawFog() {
-  const W = window.innerWidth;
-  const H = window.innerHeight;
-  
-  fctx.clearRect(0, 0, fog.width, fog.height);
-
-  // 배경 음영 (매우 어둡게 깔기)
-  fctx.fillStyle = 'rgba(5, 5, 15, 0.95)'; 
-  fctx.fillRect(0, 0, W, H);
-
-  // 지나간 자리 도려내기 (음영 제거)
-  fctx.save();
-  fctx.globalCompositeOperation = 'destination-out';
-  fctx.lineCap = 'round';
-  fctx.lineJoin = 'round';
-
-  // 1) 과거의 기록들
-  memories.forEach(m => eraseAlongPath(m.latlngs, 0.8, 30));
-  // 2) 오늘 실시간 경로 (가장 선명하게 제거)
-  if (todayLatlngs.length > 1) {
-    eraseAlongPath(todayLatlngs, 1.0, 40); 
-  }
-
-  fctx.restore();
-}
-
-function eraseAlongPath(latlngs, alpha, width) {
-  if (!latlngs || latlngs.length < 2) return;
-  fctx.globalAlpha = alpha;
-  fctx.lineWidth = width;
-  fctx.beginPath();
-  const p0 = map.latLngToContainerPoint(latlngs[0]);
-  fctx.moveTo(p0.x, p0.y);
-  for (let i = 1; i < latlngs.length; i++) {
-    const p = map.latLngToContainerPoint(latlngs[i]);
-    fctx.lineTo(p.x, p.y);
-  }
-  fctx.stroke();
-}
-
-// 3. 데이터 및 GPS
-let currentLatLng = null;
-let todayLatlngs = [];
-let memories = []; // 과거 기록 저장용
-let totalDist = 0;
-
-function handlePosition(ll) {
-  if (!currentLatLng) {
-    map.setView(ll, 17);
-    L.marker(ll, { icon: L.divIcon({ className: 'player-marker', html: '<div style="width:12px;height:12px;background:#f0c040;border-radius:50%;box-shadow:0 0 10px #f0c040;"></div>', iconSize: [12, 12] }) }).addTo(map);
-  }
-  
-  if (currentLatLng) {
-    const d = currentLatLng.distanceTo(ll);
-    if (d > 3) { // 3미터 이상 이동 시 기록
-      totalDist += d;
-      todayLatlngs.push(ll);
-      document.getElementById('stat-total').innerHTML = (totalDist/1000).toFixed(2) + '<span>km</span>';
-      document.getElementById('stat-new').innerHTML = (totalDist/1000).toFixed(2) + '<span>km</span>';
-      redrawFog();
-    }
-  } else {
-    todayLatlngs.push(ll);
-  }
-  currentLatLng = ll;
-}
-
-function startGPS() {
-  if (!navigator.geolocation) return;
-  navigator.geolocation.watchPosition(
-    pos => {
-      document.getElementById('gps-toast').style.display = 'none';
-      handlePosition(L.latLng(pos.coords.latitude, pos.coords.longitude));
-    },
-    err => console.error(err),
-    { enableHighAccuracy: true }
-  );
-}
-
-// 초기 실행
-resizeFog();
-startGPS();
-</script>
+<script src="./script.js"></script>
 </body>
 </html>
