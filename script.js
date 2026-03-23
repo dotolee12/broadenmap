@@ -1,4 +1,4 @@
-const STORAGE_KEY = "giloa-v6";
+const STORAGE_KEY = "giloa-v7";
 const FOG_ALPHA = 0.8;
 const FOG_RADIUS_M = 18;
 const MIN_MOVE_M = 8;
@@ -19,6 +19,7 @@ let playerMarker = null;
 let watchId = null;
 let saveTimer = null;
 let rafId = null;
+let memoryMarkers = new Map();
 
 const recBtn = document.getElementById("rec-btn");
 const recStatusBox = document.getElementById("rec-status-box");
@@ -474,6 +475,7 @@ function addMemory() {
 
     const now = new Date();
     const data = {
+        id: String(now.getTime()),
         lat: currentPos.lat,
         lng: currentPos.lng,
         name: escapeHtml(input.trim() || "기억의 지점"),
@@ -495,10 +497,30 @@ function addMemory() {
 function createMemoryMarker(data, openPopup = false) {
     const marker = L.marker([data.lat, data.lng], {
         icon: L.divIcon({ className: "memory-marker", html: "★", iconSize: [28, 28] })
-    }).addTo(map)
-      .bindPopup("<b>" + data.name + "</b><br><small>" + data.dateString + " 기록</small>");
+    }).addTo(map);
+
+    marker.bindPopup(
+        "<b>" + data.name + "</b><br><small>" + data.dateString + " 기록</small><br>" +
+        '<button onclick="deleteMemory(\'' + data.id + '\')" style="margin-top:8px;padding:6px 10px;border:none;border-radius:8px;background:#ff5555;color:#fff;cursor:pointer;">삭제</button>'
+    );
+
+    memoryMarkers.set(data.id, marker);
 
     if (openPopup) marker.openPopup();
+}
+
+function deleteMemory(id) {
+    memories = memories.filter((memory) => memory.id !== id);
+
+    const marker = memoryMarkers.get(id);
+    if (marker) {
+        map.removeLayer(marker);
+        memoryMarkers.delete(id);
+    }
+
+    updateMemoryList();
+    updateStats();
+    scheduleSave();
 }
 
 function updateMemoryList() {
@@ -509,16 +531,23 @@ function updateMemoryList() {
     }
 
     container.innerHTML = "";
+
     [...memories].reverse().forEach((memo) => {
         const item = document.createElement("div");
         item.className = "memory-item";
         item.innerHTML =
             '<span class="item-name">★ ' + memo.name + '</span>' +
-            '<span class="item-date">' + memo.dateString + "</span>";
+            '<span class="item-date">' + memo.dateString + '</span>' +
+            '<div style="margin-top:10px;display:flex;gap:8px;">' +
+            '<button onclick="event.stopPropagation(); map.flyTo([' + memo.lat + "," + memo.lng + '], 17);" style="flex:1;padding:8px;border:none;border-radius:8px;background:#4db8ff;color:#fff;cursor:pointer;">이동</button>' +
+            '<button onclick="event.stopPropagation(); deleteMemory(\'' + memo.id + '\')" style="flex:1;padding:8px;border:none;border-radius:8px;background:#ff5555;color:#fff;cursor:pointer;">삭제</button>' +
+            "</div>";
+
         item.onclick = () => {
             map.flyTo([memo.lat, memo.lng], 17);
             toggleSidebar(false);
         };
+
         container.appendChild(item);
     });
 }
@@ -558,6 +587,7 @@ function persistState() {
                 visits: point.visits || 1
             })),
             memories: memories.map((memory) => ({
+                id: memory.id,
                 lat: memory.lat,
                 lng: memory.lng,
                 name: memory.name,
@@ -605,6 +635,7 @@ function loadState() {
                     typeof memory.name === "string"
                 )
                 .map((memory) => ({
+                    id: typeof memory.id === "string" ? memory.id : String(memory.time),
                     lat: memory.lat,
                     lng: memory.lng,
                     name: memory.name,
