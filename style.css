@@ -151,6 +151,41 @@ html, body {
     margin-top: 50px;
 }
 
+.memory-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.memory-action-btn {
+    flex: 1;
+    padding: 8px;
+    border: none;
+    border-radius: 8px;
+    color: #fff;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.memory-action-btn.move {
+    background: #4db8ff;
+}
+
+.memory-action-btn.delete {
+    background: #ff5555;
+}
+
+.popup-delete-btn {
+    margin-top: 8px;
+    padding: 6px 10px;
+    border: none;
+    border-radius: 8px;
+    background: #ff5555;
+    color: #fff;
+    cursor: pointer;
+}
+
 #controls {
     position: absolute;
     bottom: 110px;
@@ -179,6 +214,12 @@ html, body {
 #rec-btn.recording .icon-rec { display: none; }
 #rec-btn.recording .icon-stop { display: block; }
 #rec-btn .icon-stop { display: none; }
+
+#fog-btn.off {
+    background: rgba(77, 184, 255, 0.22);
+    border-color: rgba(77, 184, 255, 0.5);
+    color: #8fd3ff;
+}
 
 .icon-stop {
     width: 14px;
@@ -240,4 +281,31 @@ html, body {
     color: #ffd84d;
     font-size: 22px;
     text-shadow: 0 0 10px rgba(255, 216, 77, 0.55);
+}
+
+@media (max-width: 640px) {
+    #top-bar {
+        top: 14px;
+        left: 14px;
+        right: 14px;
+    }
+
+    #controls {
+        right: 14px;
+        bottom: 100px;
+    }
+
+    #hud {
+        height: 82px;
+        padding: 0 18px;
+    }
+
+    #sidebar {
+        width: 280px;
+        padding: 20px;
+    }
+
+    .value {
+        font-size: 18px;
+    }
 }
