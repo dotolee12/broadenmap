@@ -1,4 +1,5 @@
 const STORAGE_KEY = "giloa-v7";
+const FOG_ENABLED_KEY = "giloa-fog-enabled";
 const FOG_ALPHA = 0.8;
 const FOG_RADIUS_M = 18;
 const MIN_MOVE_M = 8;
@@ -11,6 +12,7 @@ const MERGE_TIME_GAP_MS = 2 * 60 * 1000;
 const MAX_PATH_POINTS = 5000;
 
 let isRecording = false;
+let isFogEnabled = true;
 let currentPos = null;
 let pathCoordinates = [];
 let memories = [];
@@ -28,6 +30,9 @@ const map = L.map("map", { zoomControl: false, attributionControl: false })
     .setView([37.5665, 126.9780], 16);
 
 L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png").addTo(map);
+
+map.createPane("memoryPane");
+map.getPane("memoryPane").style.zIndex = 650;
 
 const fogCanvas = document.getElementById("fog-canvas");
 const ageCanvas = document.getElementById("age-canvas");
@@ -70,6 +75,9 @@ function renderFog() {
     const height = fogCanvas.height;
 
     fogCtx.clearRect(0, 0, width, height);
+
+    if (!isFogEnabled) return;
+
     fogCtx.fillStyle = `rgba(8, 10, 18, ${FOG_ALPHA})`;
     fogCtx.fillRect(0, 0, width, height);
 
@@ -180,13 +188,12 @@ function renderStayTint() {
     stayCtx.clearRect(0, 0, width, height);
     if (pathCoordinates.length === 0) return;
 
-    // 클리핑: 탐사한 영역 안에만 색상 표시
     stayCtx.save();
     stayCtx.beginPath();
 
     pathCoordinates.forEach((point, index) => {
         const pos = map.latLngToContainerPoint([point.lat, point.lng]);
-        const radius = getMetersToPixels(FOG_RADIUS_M + 2);
+        const radius = getMetersToPixels(FOG_RADIUS_M);
 
         stayCtx.moveTo(pos.x + radius, pos.y);
         stayCtx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
@@ -215,7 +222,7 @@ function renderStayTint() {
         if (!color) return;
 
         const pos = map.latLngToContainerPoint([point.lat, point.lng]);
-        const radius = getMetersToPixels(FOG_RADIUS_M + 2);
+        const radius = getMetersToPixels(getStayRadiusMeters(stayMin));
         const grad = stayCtx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, radius);
 
         grad.addColorStop(0, color.center);
@@ -239,30 +246,52 @@ function getAgeColor(ageDays) {
     return "rgba(95, 95, 95, 0.14)";
 }
 
-// ★ 변경된 부분: 연두 → 노랑 → 주황 (불투명도 대폭 강화)
 function getStayColor(stayMin) {
     if (stayMin >= 10 && stayMin < 30) {
         return {
-            center: "rgba(100, 230, 120, 0.75)",
-            mid:    "rgba(100, 230, 120, 0.40)",
-            edge:   "rgba(100, 230, 120, 0)"
+            center: "rgba(135,206,235,0.26)",
+            mid: "rgba(135,206,235,0.18)",
+            edge: "rgba(135,206,235,0)"
         };
     }
+
     if (stayMin >= 30 && stayMin < 60) {
         return {
-            center: "rgba(255, 210, 50, 0.80)",
-            mid:    "rgba(255, 210, 50, 0.40)",
-            edge:   "rgba(255, 210, 50, 0)"
+            center: "rgba(70,130,255,0.28)",
+            mid: "rgba(70,130,255,0.18)",
+            edge: "rgba(70,130,255,0)"
         };
     }
+
     if (stayMin >= 60) {
         return {
-            center: "rgba(255, 110, 40, 0.85)",
-            mid:    "rgba(255, 110, 40, 0.45)",
-            edge:   "rgba(255, 110, 40, 0)"
+            center: "rgba(150,90,255,0.30)",
+            mid: "rgba(150,90,255,0.20)",
+            edge: "rgba(150,90,255,0)"
         };
     }
+
     return null;
+}
+
+function getStayRadiusMeters(stayMin) {
+    const baseRadius = FOG_RADIUS_M + 2;
+    const maxRadius = baseRadius * 1.5;
+
+    if (stayMin < 10) return baseRadius;
+
+    if (stayMin < 30) {
+        const t = (stayMin - 10) / 20;
+        return baseRadius + (maxRadius - baseRadius) * (t * 0.4);
+    }
+
+    if (stayMin < 60) {
+        const t = (stayMin - 30) / 30;
+        return baseRadius + (maxRadius - baseRadius) * (0.4 + t * 0.35);
+    }
+
+    const extra = Math.min((stayMin - 60) / 60, 1);
+    return baseRadius + (maxRadius - baseRadius) * (0.75 + extra * 0.25);
 }
 
 function getMetersToPixels(meters) {
@@ -277,6 +306,15 @@ function syncRecordingUI() {
     recBtn.classList.toggle("recording", isRecording);
     recStatusBox.textContent = isRecording ? "기록 중" : "대기 중";
     recStatusBox.classList.toggle("recording", isRecording);
+}
+
+function syncFogButton() {
+    const fogBtn = document.getElementById("fog-btn");
+    if (!fogBtn) return;
+
+    fogBtn.classList.toggle("off", !isFogEnabled);
+    fogBtn.textContent = isFogEnabled ? "☁" : "☀";
+    fogBtn.title = isFogEnabled ? "어둠 끄기" : "어둠 켜기";
 }
 
 function resetRecordingState() {
@@ -298,6 +336,13 @@ function toggleRecording() {
     isRecording = true;
     syncRecordingUI();
     startTracking();
+}
+
+function toggleFog() {
+    isFogEnabled = !isFogEnabled;
+    localStorage.setItem(FOG_ENABLED_KEY, String(isFogEnabled));
+    syncFogButton();
+    scheduleRender();
 }
 
 function startTracking() {
@@ -483,6 +528,10 @@ function addMemory() {
             year: "numeric",
             month: "long",
             day: "numeric"
+        }),
+        timeString: now.toLocaleTimeString("ko-KR", {
+            hour: "2-digit",
+            minute: "2-digit"
         })
     };
 
@@ -495,15 +544,18 @@ function addMemory() {
 
 function createMemoryMarker(data, openPopup = false) {
     const marker = L.marker([data.lat, data.lng], {
+        pane: "memoryPane",
         icon: L.divIcon({ className: "memory-marker", html: "★", iconSize: [28, 28] })
     }).addTo(map);
 
     marker.bindPopup(
-        "<b>" + data.name + "</b><br><small>" + data.dateString + " 기록</small><br>" +
-        '<button onclick="deleteMemory(\'' + data.id + '\')" style="margin-top:8px;padding:6px 10px;border:none;border-radius:8px;background:#ff5555;color:#fff;cursor:pointer;">삭제</button>'
+        "<b>" + data.name + "</b><br>" +
+        "<small>" + data.dateString + " " + data.timeString + "</small><br>" +
+        '<button onclick="deleteMemory(\'' + data.id + '\')" class="popup-delete-btn">삭제</button>'
     );
 
     memoryMarkers.set(data.id, marker);
+
     if (openPopup) marker.openPopup();
 }
 
@@ -535,10 +587,10 @@ function updateMemoryList() {
         item.className = "memory-item";
         item.innerHTML =
             '<span class="item-name">★ ' + memo.name + '</span>' +
-            '<span class="item-date">' + memo.dateString + '</span>' +
-            '<div style="margin-top:10px;display:flex;gap:8px;">' +
-            '<button onclick="event.stopPropagation(); map.flyTo([' + memo.lat + ',' + memo.lng + '], 17);" style="flex:1;padding:8px;border:none;border-radius:8px;background:#4db8ff;color:#fff;cursor:pointer;">이동</button>' +
-            '<button onclick="event.stopPropagation(); deleteMemory(\'' + memo.id + '\')" style="flex:1;padding:8px;border:none;border-radius:8px;background:#ff5555;color:#fff;cursor:pointer;">삭제</button>' +
+            '<span class="item-date">' + memo.dateString + " " + memo.timeString + '</span>' +
+            '<div class="memory-actions">' +
+            '<button onclick="event.stopPropagation(); map.flyTo([' + memo.lat + "," + memo.lng + '], 17);" class="memory-action-btn move">이동</button>' +
+            '<button onclick="event.stopPropagation(); deleteMemory(\'' + memo.id + '\')" class="memory-action-btn delete">삭제</button>' +
             "</div>";
 
         item.onclick = () => {
@@ -590,7 +642,8 @@ function persistState() {
                 lng: memory.lng,
                 name: memory.name,
                 time: memory.time,
-                dateString: memory.dateString
+                dateString: memory.dateString,
+                timeString: memory.timeString
             })),
             totalDistance
         };
@@ -638,12 +691,23 @@ function loadState() {
                     lng: memory.lng,
                     name: memory.name,
                     time: memory.time,
-                    dateString: memory.dateString
+                    dateString: memory.dateString,
+                    timeString: typeof memory.timeString === "string"
+                        ? memory.timeString
+                        : new Date(memory.time).toLocaleTimeString("ko-KR", {
+                            hour: "2-digit",
+                            minute: "2-digit"
+                        })
                 }));
         }
 
         if (isFinite(saved.totalDistance)) {
             totalDistance = saved.totalDistance;
+        }
+
+        const savedFogEnabled = localStorage.getItem(FOG_ENABLED_KEY);
+        if (savedFogEnabled !== null) {
+            isFogEnabled = savedFogEnabled === "true";
         }
 
         compactPathData();
@@ -670,5 +734,6 @@ renderStoredMarkers();
 updateStats();
 updateMemoryList();
 syncRecordingUI();
+syncFogButton();
 resizeCanvas();
 scheduleRender();
