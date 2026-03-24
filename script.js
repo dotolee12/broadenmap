@@ -180,12 +180,13 @@ function renderStayTint() {
     stayCtx.clearRect(0, 0, width, height);
     if (pathCoordinates.length === 0) return;
 
+    // 클리핑: 탐사한 영역 안에만 색상 표시
     stayCtx.save();
     stayCtx.beginPath();
 
     pathCoordinates.forEach((point, index) => {
         const pos = map.latLngToContainerPoint([point.lat, point.lng]);
-        const radius = getMetersToPixels(FOG_RADIUS_M);
+        const radius = getMetersToPixels(FOG_RADIUS_M + 2);
 
         stayCtx.moveTo(pos.x + radius, pos.y);
         stayCtx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
@@ -238,31 +239,29 @@ function getAgeColor(ageDays) {
     return "rgba(95, 95, 95, 0.14)";
 }
 
+// ★ 변경된 부분: 연두 → 노랑 → 주황 (불투명도 대폭 강화)
 function getStayColor(stayMin) {
     if (stayMin >= 10 && stayMin < 30) {
         return {
-            center: "rgba(135,206,235,0.26)",
-            mid: "rgba(135,206,235,0.18)",
-            edge: "rgba(135,206,235,0)"
+            center: "rgba(100, 230, 120, 0.75)",
+            mid:    "rgba(100, 230, 120, 0.40)",
+            edge:   "rgba(100, 230, 120, 0)"
         };
     }
-
     if (stayMin >= 30 && stayMin < 60) {
         return {
-            center: "rgba(70,130,255,0.28)",
-            mid: "rgba(70,130,255,0.18)",
-            edge: "rgba(70,130,255,0)"
+            center: "rgba(255, 210, 50, 0.80)",
+            mid:    "rgba(255, 210, 50, 0.40)",
+            edge:   "rgba(255, 210, 50, 0)"
         };
     }
-
     if (stayMin >= 60) {
         return {
-            center: "rgba(150,90,255,0.30)",
-            mid: "rgba(150,90,255,0.20)",
-            edge: "rgba(150,90,255,0)"
+            center: "rgba(255, 110, 40, 0.85)",
+            mid:    "rgba(255, 110, 40, 0.45)",
+            edge:   "rgba(255, 110, 40, 0)"
         };
     }
-
     return null;
 }
 
@@ -505,7 +504,6 @@ function createMemoryMarker(data, openPopup = false) {
     );
 
     memoryMarkers.set(data.id, marker);
-
     if (openPopup) marker.openPopup();
 }
 
@@ -539,7 +537,7 @@ function updateMemoryList() {
             '<span class="item-name">★ ' + memo.name + '</span>' +
             '<span class="item-date">' + memo.dateString + '</span>' +
             '<div style="margin-top:10px;display:flex;gap:8px;">' +
-            '<button onclick="event.stopPropagation(); map.flyTo([' + memo.lat + "," + memo.lng + '], 17);" style="flex:1;padding:8px;border:none;border-radius:8px;background:#4db8ff;color:#fff;cursor:pointer;">이동</button>' +
+            '<button onclick="event.stopPropagation(); map.flyTo([' + memo.lat + ',' + memo.lng + '], 17);" style="flex:1;padding:8px;border:none;border-radius:8px;background:#4db8ff;color:#fff;cursor:pointer;">이동</button>' +
             '<button onclick="event.stopPropagation(); deleteMemory(\'' + memo.id + '\')" style="flex:1;padding:8px;border:none;border-radius:8px;background:#ff5555;color:#fff;cursor:pointer;">삭제</button>' +
             "</div>";
 
