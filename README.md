@@ -1,4 +1,4 @@
-This will be link to reality and virtual world.
+I built a location-based exploration system where real-world movement reveals a darkened map, fades over time, and highlights meaningful places based on dwell time.
 
 3/25
 메모를 별 마커로 지도에 저장할 수 있음
